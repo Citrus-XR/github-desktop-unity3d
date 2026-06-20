@@ -41,5 +41,12 @@ export function run(spawnOptions: SpawnOptions) {
     NODE_ENV: 'development',
   })
 
-  return spawn(binaryPath, [], opts)
+  // Force X11 (XWayland) on Linux: the native Wayland backend mis-renders the
+  // window frame and drops the in-window menu bar under KDE. Passed as a hard
+  // `--ozone-platform` switch rather than the softer ELECTRON_OZONE_PLATFORM_HINT
+  // env var, which Electron's auto-detection can still override. Chromium
+  // consumes the flag before app code, so it never reaches our argv parsing.
+  const args = process.platform === 'linux' ? ['--ozone-platform=x11'] : []
+
+  return spawn(binaryPath, args, opts)
 }
