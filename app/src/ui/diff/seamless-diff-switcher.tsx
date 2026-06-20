@@ -15,6 +15,7 @@ import {
   ImageDiffType,
   ITextDiff,
   ILargeTextDiff,
+  IUnityDiff,
 } from '../../models/diff'
 import { Loading } from '../lib/loading'
 import { getFileContents, IFileContents } from './syntax-highlighting'
@@ -155,8 +156,16 @@ function isSameDiff(prevDiff: IDiff, newDiff: IDiff) {
   )
 }
 
-function isTextDiff(diff: IDiff): diff is ITextDiff | ILargeTextDiff {
-  return diff.kind === DiffType.Text || diff.kind === DiffType.LargeText
+// Unity diffs carry text + hunks (like text diffs) so we load file contents
+// for them too: that enables syntax highlighting in the inspector's text view.
+function isTextDiff(
+  diff: IDiff
+): diff is ITextDiff | ILargeTextDiff | IUnityDiff {
+  return (
+    diff.kind === DiffType.Text ||
+    diff.kind === DiffType.LargeText ||
+    diff.kind === DiffType.Unity
+  )
 }
 
 /**

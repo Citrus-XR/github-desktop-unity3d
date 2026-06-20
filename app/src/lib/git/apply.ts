@@ -59,7 +59,11 @@ export async function applyPatchToIndex(
 
   const diff = await getWorkingDirectoryDiff(repository, file)
 
-  if (diff.kind !== DiffType.Text && diff.kind !== DiffType.LargeText) {
+  if (
+    diff.kind !== DiffType.Text &&
+    diff.kind !== DiffType.LargeText &&
+    diff.kind !== DiffType.Unity
+  ) {
     const { kind } = diff
     switch (diff.kind) {
       case DiffType.Binary:

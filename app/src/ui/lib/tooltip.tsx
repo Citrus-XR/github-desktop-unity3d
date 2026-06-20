@@ -641,6 +641,7 @@ export class Tooltip<T extends TooltipTarget> extends React.Component<
 
   public componentWillUnmount() {
     this.cancelShowTooltip()
+    this.cancelHideTooltip()
     this.props.target.unsubscribe(this.onTargetRef)
     this.removeTooltip(this.state.target)
 

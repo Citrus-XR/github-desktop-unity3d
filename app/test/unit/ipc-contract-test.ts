@@ -73,6 +73,8 @@ describe('IPC channel contract', () => {
 
   const expectedResponseChannels = [
     'get-path',
+    'unity-semantic-diff',
+    'unity-semantic-diff-documents',
     'get-app-architecture',
     'get-app-path',
     'get-exec-path',

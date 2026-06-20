@@ -113,6 +113,17 @@ const extensionModes: ReadonlyArray<IModeDefinition> = [
     mappings: {
       '.yaml': 'text/yaml',
       '.yml': 'text/yaml',
+      // Unity text-serialized assets are a YAML dialect.
+      '.unity': 'text/yaml',
+      '.prefab': 'text/yaml',
+      '.asset': 'text/yaml',
+      '.mat': 'text/yaml',
+      '.anim': 'text/yaml',
+      '.controller': 'text/yaml',
+      '.overridecontroller': 'text/yaml',
+      '.rendertexture': 'text/yaml',
+      '.physicsmaterial': 'text/yaml',
+      '.meta': 'text/yaml',
     },
   },
   {

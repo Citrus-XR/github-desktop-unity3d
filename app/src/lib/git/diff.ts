@@ -38,6 +38,7 @@ import { enableImagePreviewsForDDSFiles } from '../feature-flag'
 import { unstageAll } from './reset'
 import { stageFiles } from './update-index'
 import { isAbsolute } from 'path'
+import { shouldUseUnityDiff } from '../unity/unity-diff-gate'
 
 /**
  * V8 has a limit on the size of string it can create (~256MB), and unless we want to
@@ -672,6 +673,17 @@ export async function convertDiff(
     }
   }
 
+  if (await shouldUseUnityDiff(repository, file.path)) {
+    return {
+      kind: DiffType.Unity,
+      text: diff.contents,
+      hunks: diff.hunks,
+      lineEndingsChange,
+      maxLineNumber: diff.maxLineNumber,
+      hasHiddenBidiChars: diff.hasHiddenBidiChars,
+    }
+  }
+
   return {
     kind: DiffType.Text,
     text: diff.contents,
@@ -825,7 +837,24 @@ async function buildDiff(
     )
   }
 
+  // Unity assets are presented with the semantic inspector, which parses the
+  // full file off the renderer thread rather than rendering the unified diff.
+  // The diff-text size gates below would otherwise replace the inspector with a
+  // "diff too large" placeholder for any sizeable change, so Unity assets skip
+  // them: we still carry whatever diff text we have for the optional text view.
+  const isUnity = await shouldUseUnityDiff(repository, file.path)
+
   if (!isValidBuffer(buffer)) {
+    if (isUnity) {
+      return {
+        kind: DiffType.Unity,
+        text: '',
+        hunks: [],
+        lineEndingsChange,
+        maxLineNumber: 0,
+        hasHiddenBidiChars: false,
+      }
+    }
     // the buffer's diff is too large to be renderable in the UI
     return { kind: DiffType.Unrenderable }
   }
@@ -833,6 +862,16 @@ async function buildDiff(
   const diff = diffFromRawDiffOutput(buffer)
 
   if (isBufferTooLarge(buffer) || isDiffTooLarge(diff)) {
+    if (isUnity) {
+      return {
+        kind: DiffType.Unity,
+        text: diff.contents,
+        hunks: diff.hunks,
+        lineEndingsChange,
+        maxLineNumber: diff.maxLineNumber,
+        hasHiddenBidiChars: diff.hasHiddenBidiChars,
+      }
+    }
     // we don't want to render by default
     // but we keep it as an option by
     // passing in text and hunks

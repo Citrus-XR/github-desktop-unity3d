@@ -254,6 +254,15 @@ export const showCertificateTrustDialog = sendProxy(
  */
 export const getPath = invokeProxy('get-path', 1)
 
+/** Ask the main process to diff a Unity text-serialized asset across two refs. */
+export const diffUnityAsset = invokeProxy('unity-semantic-diff', 1)
+
+/** Fetch property diffs for specific documents of a Unity asset, on demand. */
+export const diffUnityAssetDocuments = invokeProxy(
+  'unity-semantic-diff-documents',
+  2
+)
+
 /**
  * Tell the main process to obtain the applications architecture
  */

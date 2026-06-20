@@ -1,0 +1,352 @@
+/**
+ * Worker-thread entry for Unity asset inspection. It owns all CPU-bound work for
+ * a diff — YAML parsing, prefab expansion, hierarchy reconstruction, and the
+ * semantic diff — so the main process never blocks. It is fed only strings (the
+ * two sides' file contents plus a GUID→path map) because parsed document trees
+ * are far too large to ship across the thread boundary; the worker reads source
+ * prefabs from the working tree itself.
+ *
+ * It is stateful: source prefabs are cached per repository, and the expanded
+ * documents of the most recent diffs are kept so a single node's property diff
+ * can be served on demand (`kind: 'docs'`). This keeps the eager diff result
+ * small — it carries only the changed documents — while the Inspector can still
+ * show any node's values without re-running the whole pipeline.
+ */
+
+import { parentPort } from 'worker_threads'
+import { readFile } from 'fs/promises'
+import { join, basename, extname } from 'path'
+import { parseUnityYaml } from '../../lib/unity/unity-yaml-parser'
+import { buildHierarchy } from '../../lib/unity/hierarchy-builder'
+import { collectReferencedGuids } from '../../lib/unity/reference-collector'
+import {
+  computeUnityAssetDiff,
+  IParsedAssetSide,
+} from '../../lib/unity/asset-diff'
+import { diffDocument, indexById } from '../../lib/unity/semantic-diff'
+import { sourcePrefabGuidOf } from '../../lib/unity/prefab-diff'
+import {
+  buildModelDocuments,
+  isModelPath,
+  parseModelNameTable,
+} from '../../lib/unity/model-prefab'
+import {
+  IUnityDocumentDiff,
+  IUnitySemanticDiffResult,
+} from '../../models/unity/semantic-diff'
+import {
+  IUnitySerializedDocument,
+  UnityFileId,
+} from '../../models/unity/serialized-asset'
+
+export interface IUnityDiffRequest {
+  readonly id: number
+  readonly kind: 'diff'
+  readonly requestKey: string
+  readonly repoPath: string
+  readonly beforePresent: boolean
+  readonly afterPresent: boolean
+  readonly beforeContent: string
+  readonly afterContent: string
+  /** GUID→repo-relative path, so the worker can read source prefabs itself. */
+  readonly pathByGuid: ReadonlyArray<readonly [string, string]>
+}
+
+export interface IUnityDocsRequest {
+  readonly id: number
+  readonly kind: 'docs'
+  readonly requestKey: string
+  readonly fileIds: ReadonlyArray<UnityFileId>
+}
+
+export type IUnityWorkerRequest = IUnityDiffRequest | IUnityDocsRequest
+
+export interface IUnityDiffResponse {
+  readonly id: number
+  readonly kind: 'diff'
+  readonly result: IUnitySemanticDiffResult
+}
+
+export interface IUnityDocsResponse {
+  readonly id: number
+  readonly kind: 'docs'
+  readonly documents: ReadonlyArray<IUnityDocumentDiff>
+}
+
+export interface IUnityErrorResponse {
+  readonly id: number
+  readonly kind: 'error'
+  readonly message: string
+}
+
+export type IUnityWorkerResponse =
+  | IUnityDiffResponse
+  | IUnityDocsResponse
+  | IUnityErrorResponse
+
+/** Cap on how many source prefabs we read while expanding one asset. */
+const maxSourcePrefabs = 5000
+/** How many recent diffs keep their expanded documents for on-demand lookups. */
+const maxCachedDiffs = 2
+
+// Parsed source-prefab documents per repository (null = resolved-but-absent, so
+// we don't re-attempt). Stable within a session, matching the main process's
+// build-once Meta index policy.
+const sourceCacheByRepo = new Map<
+  string,
+  Map<string, ReadonlyArray<IUnitySerializedDocument> | null>
+>()
+
+interface ICachedDiff {
+  readonly before: Map<UnityFileId, IUnitySerializedDocument>
+  readonly after: Map<UnityFileId, IUnitySerializedDocument>
+}
+const diffCache = new Map<string, ICachedDiff>()
+
+const cacheDiff = (key: string, value: ICachedDiff): void => {
+  diffCache.delete(key)
+  diffCache.set(key, value)
+  while (diffCache.size > maxCachedDiffs) {
+    const oldest = diffCache.keys().next().value
+    if (oldest === undefined) {
+      break
+    }
+    diffCache.delete(oldest)
+  }
+}
+
+const sourceGuidsOf = (
+  documents: ReadonlyArray<IUnitySerializedDocument>
+): ReadonlyArray<string> => {
+  const guids = new Array<string>()
+  for (const doc of documents) {
+    if (doc.classId === 1001) {
+      const guid = sourcePrefabGuidOf(doc)
+      if (guid !== undefined) {
+        guids.push(guid)
+      }
+    }
+  }
+  return guids
+}
+
+const parseSide = (present: boolean, content: string): IParsedAssetSide => {
+  if (!present) {
+    return {
+      present: false,
+      documents: [],
+      roots: [],
+      status: 'parsed',
+      warnings: [],
+      referencedGuids: [],
+    }
+  }
+  try {
+    const parsed = parseUnityYaml(content)
+    const roots = buildHierarchy(parsed.documents)
+    const warnings = [...parsed.warnings]
+    const gameObjectCount = parsed.documents.filter(
+      d => d.classId === 1 && !d.stripped
+    ).length
+    if (gameObjectCount > 0 && roots.length === 0) {
+      warnings.push(
+        `Hierarchy reconstruction produced no roots from ${gameObjectCount} GameObject(s) — unsupported prefab structure?`
+      )
+    }
+    return {
+      present: true,
+      documents: parsed.documents,
+      roots,
+      status: parsed.status,
+      warnings,
+      referencedGuids: Array.from(collectReferencedGuids(parsed.documents)),
+    }
+  } catch (e) {
+    return {
+      present: true,
+      documents: [],
+      roots: [],
+      status: 'invalid-yaml',
+      warnings: [e instanceof Error ? e.message : String(e)],
+      referencedGuids: [],
+    }
+  }
+}
+
+/** Read and parse one source by path (working tree), or null if unreadable. */
+const resolveSourceDocs = async (
+  repoPath: string,
+  path: string
+): Promise<ReadonlyArray<IUnitySerializedDocument> | null> => {
+  try {
+    if (isModelPath(path)) {
+      const meta = await readFile(join(repoPath, `${path}.meta`), 'utf8')
+      return buildModelDocuments(
+        parseModelNameTable(meta),
+        basename(path, extname(path))
+      )
+    }
+    const content = await readFile(join(repoPath, path), 'utf8')
+    return parseUnityYaml(content).documents
+  } catch {
+    return null
+  }
+}
+
+const buildSourceMap = async (
+  repoPath: string,
+  rootDocuments: ReadonlyArray<IUnitySerializedDocument>,
+  pathByGuid: ReadonlyMap<string, string>
+): Promise<Map<string, ReadonlyArray<IUnitySerializedDocument>>> => {
+  const repoCache =
+    sourceCacheByRepo.get(repoPath) ??
+    new Map<string, ReadonlyArray<IUnitySerializedDocument> | null>()
+  sourceCacheByRepo.set(repoPath, repoCache)
+
+  const map = new Map<string, ReadonlyArray<IUnitySerializedDocument>>()
+  const seen = new Set<string>()
+  let frontier: ReadonlyArray<string> = sourceGuidsOf(rootDocuments)
+
+  while (frontier.length > 0 && map.size < maxSourcePrefabs) {
+    const toFetch = new Array<{ guid: string; path: string }>()
+    const next = new Array<string>()
+    const enqueue = (docs: ReadonlyArray<IUnitySerializedDocument>) => {
+      for (const guid of sourceGuidsOf(docs)) {
+        if (!seen.has(guid)) {
+          next.push(guid)
+        }
+      }
+    }
+
+    for (const guid of frontier) {
+      if (seen.has(guid)) {
+        continue
+      }
+      seen.add(guid)
+      const cached = repoCache.get(guid)
+      if (cached !== undefined) {
+        if (cached !== null) {
+          map.set(guid, cached)
+          enqueue(cached)
+        }
+        continue
+      }
+      const path = pathByGuid.get(guid)
+      if (path !== undefined) {
+        toFetch.push({ guid, path })
+      }
+    }
+
+    const fetched = await Promise.all(
+      toFetch.map(async ({ guid, path }) => ({
+        guid,
+        docs: await resolveSourceDocs(repoPath, path),
+      }))
+    )
+    for (const { guid, docs } of fetched) {
+      repoCache.set(guid, docs)
+      if (docs !== null) {
+        map.set(guid, docs)
+        enqueue(docs)
+      }
+    }
+
+    frontier = next
+  }
+  return map
+}
+
+// Project layer names (index → name) per repository, read once from
+// TagManager.asset. Stable within a session, matching the source cache.
+const layerNamesByRepo = new Map<string, ReadonlyArray<string>>()
+
+const readLayerNames = async (
+  repoPath: string
+): Promise<ReadonlyArray<string>> => {
+  const cached = layerNamesByRepo.get(repoPath)
+  if (cached !== undefined) {
+    return cached
+  }
+  let names: ReadonlyArray<string> = []
+  try {
+    const content = await readFile(
+      join(repoPath, 'ProjectSettings/TagManager.asset'),
+      'utf8'
+    )
+    const tagManager = parseUnityYaml(content).documents.find(
+      d => d.classId === 78
+    )
+    const layers = tagManager?.properties.find(p => p.key === 'layers')?.value
+    if (layers !== undefined && layers.kind === 'sequence') {
+      names = layers.items.map(item =>
+        item.kind === 'scalar' ? item.value : ''
+      )
+    }
+  } catch {
+    // No TagManager (or unreadable) — the renderer falls back to built-ins.
+  }
+  layerNamesByRepo.set(repoPath, names)
+  return names
+}
+
+const handleDiff = async (
+  request: IUnityDiffRequest
+): Promise<IUnityDiffResponse> => {
+  const pathByGuid = new Map(request.pathByGuid)
+  const before = parseSide(request.beforePresent, request.beforeContent)
+  const after = parseSide(request.afterPresent, request.afterContent)
+  const sources = await buildSourceMap(
+    request.repoPath,
+    [...before.documents, ...after.documents],
+    pathByGuid
+  )
+  const { result, expandedBefore, expandedAfter } = computeUnityAssetDiff(
+    before,
+    after,
+    sources,
+    guid => pathByGuid.get(guid)
+  )
+  cacheDiff(request.requestKey, {
+    before: indexById(expandedBefore),
+    after: indexById(expandedAfter),
+  })
+  const layerNames = await readLayerNames(request.repoPath)
+  return { id: request.id, kind: 'diff', result: { ...result, layerNames } }
+}
+
+const handleDocs = (request: IUnityDocsRequest): IUnityDocsResponse => {
+  const cached = diffCache.get(request.requestKey)
+  const documents = new Array<IUnityDocumentDiff>()
+  if (cached !== undefined) {
+    for (const id of request.fileIds) {
+      const before = cached.before.get(id) ?? null
+      const after = cached.after.get(id) ?? null
+      if (before === null && after === null) {
+        continue
+      }
+      documents.push(diffDocument(before, after))
+    }
+  }
+  return { id: request.id, kind: 'docs', documents }
+}
+
+const port = parentPort
+
+if (port !== null) {
+  port.on('message', async (request: IUnityWorkerRequest) => {
+    try {
+      const response =
+        request.kind === 'diff'
+          ? await handleDiff(request)
+          : handleDocs(request)
+      port.postMessage(response)
+    } catch (e) {
+      const error: IUnityErrorResponse = {
+        id: request.id,
+        kind: 'error',
+        message: e instanceof Error ? e.message : String(e),
+      }
+      port.postMessage(error)
+    }
+  })
+}

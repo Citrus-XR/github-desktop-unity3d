@@ -13,6 +13,7 @@ const config: webpack.Configuration = {
 const mainConfig = merge({}, common.main, config)
 const cliConfig = merge({}, common.cli, config)
 const highlighterConfig = merge({}, common.highlighter, config)
+const unityWorkerConfig = merge({}, common.unityInspectionWorker, config)
 
 const rendererConfig = merge({}, common.renderer, config, {
   module: {
@@ -67,4 +68,5 @@ export default [
   crashConfig,
   cliConfig,
   highlighterConfig,
+  unityWorkerConfig,
 ]

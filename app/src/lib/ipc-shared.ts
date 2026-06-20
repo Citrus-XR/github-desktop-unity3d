@@ -17,6 +17,12 @@ import { DesktopNotificationPermission } from 'desktop-notifications'
 import { NotificationCallback } from 'desktop-notifications'
 import { DesktopAliveEvent } from './stores/alive-store'
 import { CLIAction } from './cli-action'
+import {
+  IUnityDocumentDiff,
+  IUnitySemanticDiffRequest,
+  IUnitySemanticDiffResult,
+} from '../models/unity/semantic-diff'
+import { UnityFileId } from '../models/unity/serialized-asset'
 
 /**
  * Defines the simplex IPC channel names we use from the renderer
@@ -99,6 +105,13 @@ export type RequestChannels = {
  */
 export type RequestResponseChannels = {
   'get-path': (path: PathType) => Promise<string>
+  'unity-semantic-diff': (
+    request: IUnitySemanticDiffRequest
+  ) => Promise<IUnitySemanticDiffResult>
+  'unity-semantic-diff-documents': (
+    request: IUnitySemanticDiffRequest,
+    fileIds: ReadonlyArray<UnityFileId>
+  ) => Promise<ReadonlyArray<IUnityDocumentDiff>>
   'get-app-architecture': () => Promise<Architecture>
   'get-app-path': () => Promise<string>
   'get-exec-path': () => Promise<string>

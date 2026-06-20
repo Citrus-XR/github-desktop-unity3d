@@ -1,0 +1,11 @@
+# The Unity Inspector is a custom, mouse-first diff widget: a virtualised
+# hierarchy tree whose rows and disclosure toggles are clickable, plus inspector
+# values (object references, asset paths) that act on click and reveal a fileID
+# or full path on hover via the native `title` tooltip. Implementing full
+# WAI-ARIA tree semantics and replacing every hover affordance is out of scope
+# for this feature, so the generic a11y heuristics below are relaxed here only.
+# All other rules (including react/jsx-no-bind) remain in force.
+rules:
+  jsx-a11y/click-events-have-key-events: off
+  jsx-a11y/no-static-element-interactions: off
+  github/a11y-no-title-attribute: off

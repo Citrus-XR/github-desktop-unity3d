@@ -12,6 +12,10 @@ import {
 import * as Fs from 'fs'
 
 import { AppWindow } from './app-window'
+import {
+  diffUnityAsset,
+  diffUnityAssetDocuments,
+} from './unity/unity-inspection-service'
 import { buildDefaultMenu, getAllMenuItems } from './menu'
 import { shellNeedsPatching, updateEnvironmentForProcess } from '../lib/shell'
 import { parseAppURL } from '../lib/parse-app-url'
@@ -600,6 +604,23 @@ app.on('ready', () => {
    * An event sent by the renderer asking for the app's architecture
    */
   ipcMain.handle('get-path', async (_, path) => app.getPath(path))
+
+  /**
+   * Diff a Unity text-serialized asset across two Git refs and return its
+   * semantic model (merged hierarchy + per-document property diffs).
+   */
+  ipcMain.handle('unity-semantic-diff', (_, request) =>
+    diffUnityAsset(request)
+  )
+
+  /**
+   * Fetch the property diffs for specific documents (a selected node and its
+   * components). Served lazily from the worker's cache so the eager diff result
+   * can omit every unchanged document.
+   */
+  ipcMain.handle('unity-semantic-diff-documents', (_, request, fileIds) =>
+    diffUnityAssetDocuments(request, fileIds)
+  )
 
   /**
    * An event sent by the renderer asking for the app's architecture

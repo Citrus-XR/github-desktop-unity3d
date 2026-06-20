@@ -64,6 +64,24 @@ export const main = merge({}, commonConfig, {
   ],
 })
 
+export const unityInspectionWorker = merge({}, commonConfig, {
+  name: 'unity-inspection-worker',
+  entry: {
+    'unity-inspection-worker': path.resolve(
+      __dirname,
+      'src/main-process/unity/unity-inspection-worker'
+    ),
+  },
+  target: 'node',
+  plugins: [
+    new webpack.DefinePlugin(
+      Object.assign({}, replacements, {
+        __PROCESS_KIND__: JSON.stringify('unity-inspection-worker'),
+      })
+    ),
+  ],
+})
+
 export const renderer = merge({}, commonConfig, {
   entry: { renderer: path.resolve(__dirname, 'src/ui/index') },
   target: 'electron-renderer',

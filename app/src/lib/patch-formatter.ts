@@ -5,6 +5,7 @@ import {
   ITextDiff,
   DiffSelection,
   ILargeTextDiff,
+  IUnityDiff,
 } from '../models/diff'
 
 /**
@@ -128,7 +129,7 @@ function formatHunkHeader(
  */
 export function formatPatch(
   file: WorkingDirectoryFileChange,
-  diff: ITextDiff | ILargeTextDiff
+  diff: ITextDiff | ILargeTextDiff | IUnityDiff
 ): string {
   let patch = ''
 

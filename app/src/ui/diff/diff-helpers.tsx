@@ -9,7 +9,7 @@ import {
   CommittedFileChange,
 } from '../../models/status'
 import { DiffHunk, DiffHunkExpansionType } from '../../models/diff/raw-diff'
-import { DiffLineType, ILargeTextDiff, ITextDiff } from '../../models/diff'
+import { DiffLineType, ILargeTextDiff, ITextDiff, IUnityDiff } from '../../models/diff'
 
 /**
  * DiffRowType defines the different types of
@@ -449,8 +449,8 @@ export function getFirstAndLastClassesSideBySide(
  * a diff is the intended use case.
  */
 export function textDiffEquals(
-  x: ITextDiff | ILargeTextDiff,
-  y: ITextDiff | ILargeTextDiff
+  x: ITextDiff | ILargeTextDiff | IUnityDiff,
+  y: ITextDiff | ILargeTextDiff | IUnityDiff
 ) {
   if (x === y) {
     return true

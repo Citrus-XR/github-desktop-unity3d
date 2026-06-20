@@ -20,6 +20,8 @@ export enum DiffType {
   LargeText,
   /** Diff that will not be rendered */
   Unrenderable,
+  /** Changes to a Unity text-serialized asset, shown with a semantic inspector */
+  Unity,
 }
 
 type LineEnding = 'CR' | 'LF' | 'CRLF'
@@ -118,6 +120,16 @@ export interface IUnrenderableDiff {
   readonly kind: DiffType.Unrenderable
 }
 
+/**
+ * A diff of a Unity text-serialized asset. It carries the same text and hunks
+ * as a plain text diff so the renderer can always fall back to the standard
+ * side-by-side view; the semantic inspector is loaded lazily from the main
+ * process when the Unity renderer mounts.
+ */
+export interface IUnityDiff extends ITextDiffData {
+  readonly kind: DiffType.Unity
+}
+
 /** The union of diff types that can be rendered in Desktop */
 export type IDiff =
   | ITextDiff
@@ -126,3 +138,4 @@ export type IDiff =
   | ISubmoduleDiff
   | ILargeTextDiff
   | IUnrenderableDiff
+  | IUnityDiff

@@ -20,8 +20,14 @@ import {
   ILargeTextDiff,
   ImageDiffType,
   ISubmoduleDiff,
+  IUnityDiff,
 } from '../../models/diff'
 import { Button } from '../lib/button'
+import { getBoolean, setBoolean } from '../../lib/local-storage'
+
+/** Persisted Unity diff view preferences (remembered across files/sessions). */
+const unityShowUnchangedKey = 'unity-diff-show-unchanged'
+const unityAlwaysOpenLargeKey = 'unity-diff-always-open-large'
 import {
   NewImageDiff,
   ModifiedImageDiff,
@@ -31,6 +37,7 @@ import { BinaryFile } from './binary-file'
 import { SideBySideDiff } from './side-by-side-diff'
 import { IFileContents } from './syntax-highlighting'
 import { SubmoduleDiff } from './submodule-diff'
+import { UnityDiff } from './unity/unity-diff'
 import { Octicon } from '../octicons'
 import * as OcticonSymbol from '../octicons/octicons.generated'
 
@@ -109,6 +116,9 @@ interface IDiffProps {
 
 interface IDiffState {
   readonly forceShowLargeDiff: boolean
+  readonly showUnityAsText: boolean
+  readonly showUnityUnchanged: boolean
+  readonly unityAlwaysOpenLarge: boolean
 }
 
 /** A component which renders a diff for a file. */
@@ -118,6 +128,9 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
 
     this.state = {
       forceShowLargeDiff: false,
+      showUnityAsText: false,
+      showUnityUnchanged: getBoolean(unityShowUnchangedKey, false),
+      unityAlwaysOpenLarge: getBoolean(unityAlwaysOpenLargeKey, false),
     }
   }
 
@@ -140,9 +153,96 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
       }
       case DiffType.Unrenderable:
         return this.renderUnrenderableDiff()
+      case DiffType.Unity:
+        return this.renderUnityDiff(diff)
       default:
         return assertNever(diff, `Unsupported diff type: ${diff}`)
     }
+  }
+
+  private renderUnityDiff(diff: IUnityDiff) {
+    return (
+      <div className="unity-diff-container">
+        <div className="unity-diff-toolbar">
+          {this.state.showUnityAsText ? null : (
+            <div className="unity-toolbar-options">
+              <Button
+                className={
+                  this.state.showUnityUnchanged
+                    ? 'unity-toolbar-toggle is-toggled'
+                    : 'unity-toolbar-toggle'
+                }
+                onClick={this.toggleUnityUnchanged}
+                ariaLabel="Toggle showing unchanged properties"
+              >
+                {__DARWIN__ ? 'Show Unchanged' : 'Show unchanged'}
+              </Button>
+              <Button
+                className={
+                  this.state.unityAlwaysOpenLarge
+                    ? 'unity-toolbar-toggle is-toggled'
+                    : 'unity-toolbar-toggle'
+                }
+                onClick={this.toggleUnityAlwaysOpenLarge}
+                ariaLabel="Toggle always opening large files"
+              >
+                {__DARWIN__ ? 'Always Open Large' : 'Always open large'}
+              </Button>
+            </div>
+          )}
+          <Button onClick={this.toggleUnityAsText}>
+            {this.state.showUnityAsText
+              ? __DARWIN__
+                ? 'Show Unity Inspector'
+                : 'Show Unity inspector'
+              : __DARWIN__
+              ? 'Show Text Diff'
+              : 'Show text diff'}
+          </Button>
+        </div>
+        {this.state.showUnityAsText ? (
+          this.renderTextDiff({
+            kind: DiffType.Text,
+            text: diff.text,
+            hunks: diff.hunks,
+            lineEndingsChange: diff.lineEndingsChange,
+            maxLineNumber: diff.maxLineNumber,
+            hasHiddenBidiChars: diff.hasHiddenBidiChars,
+          })
+        ) : (
+          <UnityDiff
+            repository={this.props.repository}
+            file={this.props.file}
+            showUnchanged={this.state.showUnityUnchanged}
+            onEnableShowUnchanged={this.enableUnityUnchanged}
+            alwaysOpenLarge={this.state.unityAlwaysOpenLarge}
+          />
+        )}
+      </div>
+    )
+  }
+
+  private toggleUnityAsText = () => {
+    this.setState({ showUnityAsText: !this.state.showUnityAsText })
+  }
+
+  private toggleUnityUnchanged = () => {
+    const value = !this.state.showUnityUnchanged
+    setBoolean(unityShowUnchangedKey, value)
+    this.setState({ showUnityUnchanged: value })
+  }
+
+  private enableUnityUnchanged = () => {
+    if (!this.state.showUnityUnchanged) {
+      setBoolean(unityShowUnchangedKey, true)
+      this.setState({ showUnityUnchanged: true })
+    }
+  }
+
+  private toggleUnityAlwaysOpenLarge = () => {
+    const value = !this.state.unityAlwaysOpenLarge
+    setBoolean(unityAlwaysOpenLargeKey, value)
+    this.setState({ unityAlwaysOpenLarge: value })
   }
 
   private renderImage(imageDiff: IImageDiff) {
