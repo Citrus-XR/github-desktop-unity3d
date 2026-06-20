@@ -4,6 +4,26 @@
 GitHub app. It is written in [TypeScript](https://www.typescriptlang.org) and
 uses [React](https://reactjs.org/).
 
+> ### About this fork
+>
+> This fork adds an **offline Unity Semantic Inspector & Diff**: it renders
+> changes to Unity `.unity` scenes, `.prefab`s and `.mat` materials the way the
+> Unity Inspector would — a GameObject hierarchy with friendly, per-component
+> layouts — without opening Unity and using only the git-tracked source files.
+> A toolbar toggle switches back to the raw text diff at any time. The parse →
+> expand → diff work runs in a dedicated worker so the main thread stays
+> responsive on large scenes.
+>
+> **Running on Linux (KDE/Wayland):** the dev launcher (`yarn start`) forces
+> X11/XWayland (`--ozone-platform=x11`), because the native Wayland backend
+> drops the in-window menu bar and mis-renders the frame under KDE.
+>
+> **Git auth in the dev build:** the development build (`GitHub Desktop-dev`)
+> has its own account store, separate from any installed GitHub Desktop, so it
+> must be signed in once on its own (Sign in → using your browser). Until then,
+> background fetches fail with `terminal prompts disabled`; that stops once the
+> account is added.
+
 <picture>
   <source
     srcset="https://user-images.githubusercontent.com/634063/202742848-63fa1488-6254-49b5-af7c-96a6b50ea8af.png"
