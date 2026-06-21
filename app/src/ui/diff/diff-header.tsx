@@ -23,6 +23,10 @@ interface IDiffHeaderProps {
   /** Called when the user changes the hide whitespace in diffs setting. */
   readonly onHideWhitespaceInDiffChanged: (checked: boolean) => Promise<void>
 
+  /** Whether a Unity semantic diff is being shown as a raw text diff. */
+  readonly showUnityAsText?: boolean
+  readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
+
   /** Called when the user opens the diff options popover */
   readonly onDiffOptionsOpened: () => void
 }
@@ -53,6 +57,11 @@ export class DiffHeader extends React.Component<IDiffHeaderProps, {}> {
       return null
     }
 
+    const showUnityAsText =
+      this.props.diff?.kind === DiffType.Unity
+        ? this.props.showUnityAsText
+        : undefined
+
     return (
       <DiffOptions
         isInteractiveDiff={true}
@@ -62,6 +71,8 @@ export class DiffHeader extends React.Component<IDiffHeaderProps, {}> {
         hideWhitespaceChanges={this.props.hideWhitespaceInDiff}
         onShowSideBySideDiffChanged={this.props.onShowSideBySideDiffChanged}
         showSideBySideDiff={this.props.showSideBySideDiff}
+        showUnityAsText={showUnityAsText}
+        onShowUnityAsTextChanged={this.props.onShowUnityAsTextChanged}
         onDiffOptionsOpened={this.props.onDiffOptionsOpened}
       />
     )

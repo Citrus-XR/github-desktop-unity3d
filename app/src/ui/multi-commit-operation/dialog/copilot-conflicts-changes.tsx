@@ -1,7 +1,7 @@
 import * as React from 'react'
 import * as Path from 'path'
 import { AppFileStatusKind, CommittedFileChange } from '../../../models/status'
-import { IDiff, ImageDiffType } from '../../../models/diff'
+import { DiffType, IDiff, ImageDiffType } from '../../../models/diff'
 import { WorkingDirectoryFileChange } from '../../../models/status'
 import { IFileResolution } from '../../../lib/copilot-conflict-resolution'
 import { ManualConflictResolution } from '../../../models/manual-conflict-resolution'
@@ -39,6 +39,7 @@ interface ICopilotConflictsChangesState {
   readonly showSideBySideDiff: boolean
   readonly hideWhitespaceInDiff: boolean
   readonly imageDiffType: ImageDiffType
+  readonly showUnityAsText: boolean
   readonly isSubheaderExpanded: boolean
   readonly isSubheaderOverflowed: boolean
 }
@@ -68,6 +69,7 @@ export class CopilotConflictsChanges extends React.Component<
       showSideBySideDiff: false,
       hideWhitespaceInDiff: false,
       imageDiffType: ImageDiffType.TwoUp,
+      showUnityAsText: false,
       isSubheaderExpanded: false,
       isSubheaderOverflowed: false,
     }
@@ -209,6 +211,10 @@ export class CopilotConflictsChanges extends React.Component<
     this.setState({ showSideBySideDiff })
   }
 
+  private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
+    this.setState({ showUnityAsText })
+  }
+
   private onHideWhitespaceInDiffChanged = (hideWhitespaceInDiff: boolean) => {
     this.setState({ hideWhitespaceInDiff })
   }
@@ -298,7 +304,9 @@ export class CopilotConflictsChanges extends React.Component<
       noResolution,
       showSideBySideDiff,
       hideWhitespaceInDiff,
+      showUnityAsText,
     } = this.state
+    const isUnityDiff = diff?.kind === DiffType.Unity
 
     const choice =
       selectedFile !== null
@@ -325,6 +333,8 @@ export class CopilotConflictsChanges extends React.Component<
             onHideWhitespaceChangesChanged={this.onHideWhitespaceInDiffChanged}
             showSideBySideDiff={showSideBySideDiff}
             onShowSideBySideDiffChanged={this.onShowSideBySideDiffChanged}
+            showUnityAsText={isUnityDiff ? showUnityAsText : undefined}
+            onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
             onDiffOptionsOpened={this.onDiffOptionsOpened}
           />
         </div>
@@ -405,6 +415,8 @@ export class CopilotConflictsChanges extends React.Component<
                 onHideWhitespaceInDiffChanged={
                   this.onHideWhitespaceInDiffChanged
                 }
+                showUnityAsText={showUnityAsText}
+                onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
               />
             )}
             {selectedFile !== null && noResolution && (

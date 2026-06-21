@@ -56,7 +56,17 @@ interface IChangesProps {
   readonly onDiffOptionsOpened: () => void
 }
 
-export class Changes extends React.Component<IChangesProps, {}> {
+interface IChangesState {
+  readonly showUnityAsText: boolean
+}
+
+export class Changes extends React.Component<IChangesProps, IChangesState> {
+  public constructor(props: IChangesProps) {
+    super(props)
+
+    this.state = { showUnityAsText: false }
+  }
+
   /**
    * Whether or not it's currently possible to change the line selection
    * of a diff. Changing selection is not possible while a commit is in
@@ -110,6 +120,8 @@ export class Changes extends React.Component<IChangesProps, {}> {
           onShowSideBySideDiffChanged={this.onShowSideBySideDiffChanged}
           hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
           onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+          showUnityAsText={this.state.showUnityAsText}
+          onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
           onDiffOptionsOpened={this.props.onDiffOptionsOpened}
         />
 
@@ -131,6 +143,8 @@ export class Changes extends React.Component<IChangesProps, {}> {
           onOpenSubmodule={this.props.onOpenSubmodule}
           onChangeImageDiffType={this.props.onChangeImageDiffType}
           onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+          showUnityAsText={this.state.showUnityAsText}
+          onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
         />
       </div>
     )
@@ -145,5 +159,9 @@ export class Changes extends React.Component<IChangesProps, {}> {
       hideWhitespaceInDiff,
       this.props.repository
     )
+  }
+
+  private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
+    this.setState({ showUnityAsText })
   }
 }

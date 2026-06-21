@@ -113,6 +113,16 @@ interface ISeamlessDiffSwitcherProps {
   // Used in getDerivedStateFromProps, no-unused-prop-types doesn't know that
   // eslint-disable-next-line react/no-unused-prop-types
   readonly onHideWhitespaceInDiffChanged: (checked: boolean) => void
+
+  /** Whether a Unity semantic diff is being shown as a raw text diff. */
+  // Used in getDerivedStateFromProps, no-unused-prop-types doesn't know that
+  // eslint-disable-next-line react/no-unused-prop-types
+  readonly showUnityAsText?: boolean
+
+  /** Called when the user changes the Unity diff presentation mode. */
+  // Used in getDerivedStateFromProps, no-unused-prop-types doesn't know that
+  // eslint-disable-next-line react/no-unused-prop-types
+  readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
 }
 
 interface ISeamlessDiffSwitcherState {
@@ -349,6 +359,8 @@ export class SeamlessDiffSwitcher extends React.Component<
       onOpenSubmodule,
       onChangeImageDiffType,
       onHideWhitespaceInDiffChanged,
+      showUnityAsText,
+      onShowUnityAsTextChanged,
     } = this.state.propSnapshot
 
     const className = classNames('seamless-diff-switcher', {
@@ -386,6 +398,10 @@ export class SeamlessDiffSwitcher extends React.Component<
             onChangeImageDiffType={isLoadingDiff ? noop : onChangeImageDiffType}
             onHideWhitespaceInDiffChanged={
               isLoadingDiff ? noop : onHideWhitespaceInDiffChanged
+            }
+            showUnityAsText={showUnityAsText}
+            onShowUnityAsTextChanged={
+              isLoadingDiff ? noop : onShowUnityAsTextChanged
             }
           />
         ) : null}

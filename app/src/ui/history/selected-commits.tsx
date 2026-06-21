@@ -95,6 +95,7 @@ interface ISelectedCommitsProps {
 
 interface ISelectedCommitsState {
   readonly isExpanded: boolean
+  readonly showUnityAsText: boolean
 }
 
 /** The History component. Contains the commit list, commit summary, and diff. */
@@ -109,6 +110,7 @@ export class SelectedCommits extends React.Component<
 
     this.state = {
       isExpanded: false,
+      showUnityAsText: false,
     }
   }
 
@@ -171,6 +173,8 @@ export class SelectedCommits extends React.Component<
           onChangeImageDiffType={this.props.onChangeImageDiffType}
           onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
           onOpenSubmodule={this.props.onOpenSubmodule}
+          showUnityAsText={this.state.showUnityAsText}
+          onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
         />
       </div>
     )
@@ -193,6 +197,8 @@ export class SelectedCommits extends React.Component<
         onShowSideBySideDiffChanged={this.onShowSideBySideDiffChanged}
         hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
         onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+        showUnityAsText={this.state.showUnityAsText}
+        onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
         onDiffOptionsOpened={this.props.onDiffOptionsOpened}
       />
     )
@@ -240,6 +246,10 @@ export class SelectedCommits extends React.Component<
 
   private onShowSideBySideDiffChanged = (showSideBySideDiff: boolean) => {
     this.props.dispatcher.onShowSideBySideDiffChanged(showSideBySideDiff)
+  }
+
+  private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
+    this.setState({ showUnityAsText })
   }
 
   private onCommitSummaryReset = () => {

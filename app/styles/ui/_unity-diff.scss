@@ -16,11 +16,14 @@
 }
 
 .unity-toolbar-options {
-  // Pushes the options to the left so the text-diff button stays on the right.
-  margin-right: auto;
   display: flex;
   align-items: center;
   gap: var(--spacing-half);
+
+  &.has-mode-toggle {
+    // Pushes the options to the left so the text-diff button stays on the right.
+    margin-right: auto;
+  }
 }
 
 .unity-toolbar-toggle.is-toggled {

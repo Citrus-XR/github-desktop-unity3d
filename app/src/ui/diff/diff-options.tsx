@@ -21,6 +21,10 @@ interface IDiffOptionsProps {
   readonly showSideBySideDiff: boolean
   readonly onShowSideBySideDiffChanged: (showSideBySideDiff: boolean) => void
 
+  /** Whether a Unity semantic diff is being shown as a raw text diff. */
+  readonly showUnityAsText?: boolean
+  readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
+
   /** Called when the user opens the diff options popover */
   readonly onDiffOptionsOpened: () => void
 }
@@ -120,9 +124,47 @@ export class DiffOptions extends React.Component<
         onClickOutside={this.closePopover}
       >
         <h3 id="diff-options-popover-header">{header}</h3>
+        {this.renderUnityDiffMode()}
         {this.renderHideWhitespaceChanges()}
         {this.renderShowSideBySide()}
       </Popover>
+    )
+  }
+
+  private onSemanticDiffSelected = () => {
+    this.props.onShowUnityAsTextChanged?.(false)
+  }
+
+  private onRawDiffSelected = () => {
+    this.props.onShowUnityAsTextChanged?.(true)
+  }
+
+  private renderUnityDiffMode() {
+    const { showUnityAsText, onShowUnityAsTextChanged } = this.props
+
+    if (
+      showUnityAsText === undefined ||
+      onShowUnityAsTextChanged === undefined
+    ) {
+      return null
+    }
+
+    return (
+      <fieldset role="radiogroup">
+        <legend>Unity diff</legend>
+        <RadioButton
+          value="Semantic"
+          checked={!showUnityAsText}
+          label={__DARWIN__ ? 'Semantic Diff' : 'Semantic diff'}
+          onSelected={this.onSemanticDiffSelected}
+        />
+        <RadioButton
+          value="Raw"
+          checked={showUnityAsText}
+          label={__DARWIN__ ? 'Raw Diff' : 'Raw diff'}
+          onSelected={this.onRawDiffSelected}
+        />
+      </fieldset>
     )
   }
 

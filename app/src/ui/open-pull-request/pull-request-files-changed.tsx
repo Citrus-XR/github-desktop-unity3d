@@ -1,6 +1,6 @@
 import * as React from 'react'
 import * as Path from 'path'
-import { IDiff, ImageDiffType } from '../../models/diff'
+import { DiffType, IDiff, ImageDiffType } from '../../models/diff'
 import { Repository } from '../../models/repository'
 import { CommittedFileChange } from '../../models/status'
 import { SeamlessDiffSwitcher } from '../diff/seamless-diff-switcher'
@@ -68,6 +68,7 @@ interface IPullRequestFilesChangedProps {
 
 interface IPullRequestFilesChangedState {
   readonly showSideBySideDiff: boolean
+  readonly showUnityAsText: boolean
 }
 
 /**
@@ -80,7 +81,10 @@ export class PullRequestFilesChanged extends React.Component<
   public constructor(props: IPullRequestFilesChangedProps) {
     super(props)
 
-    this.state = { showSideBySideDiff: props.showSideBySideDiff }
+    this.state = {
+      showSideBySideDiff: props.showSideBySideDiff,
+      showUnityAsText: false,
+    }
   }
 
   private onOpenFile = (path: string) => {
@@ -108,6 +112,10 @@ export class PullRequestFilesChanged extends React.Component<
 
   private onShowSideBySideDiffChanged = (showSideBySideDiff: boolean) => {
     this.setState({ showSideBySideDiff })
+  }
+
+  private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
+    this.setState({ showUnityAsText })
   }
 
   private onDiffOptionsOpened = () => {
@@ -240,7 +248,9 @@ export class PullRequestFilesChanged extends React.Component<
 
   private renderHeader() {
     const { hideWhitespaceInDiff } = this.props
-    const { showSideBySideDiff } = this.state
+    const { showSideBySideDiff, showUnityAsText } = this.state
+    const isUnityDiff = this.props.diff?.kind === DiffType.Unity
+
     return (
       <div className="files-changed-header">
         <div className="commits-displayed">
@@ -252,6 +262,8 @@ export class PullRequestFilesChanged extends React.Component<
           onHideWhitespaceChangesChanged={this.onHideWhitespaceInDiffChanged}
           showSideBySideDiff={showSideBySideDiff}
           onShowSideBySideDiffChanged={this.onShowSideBySideDiffChanged}
+          showUnityAsText={isUnityDiff ? showUnityAsText : undefined}
+          onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
           onDiffOptionsOpened={this.onDiffOptionsOpened}
         />
       </div>
@@ -306,6 +318,8 @@ export class PullRequestFilesChanged extends React.Component<
         onOpenBinaryFile={this.onOpenBinaryFile}
         onChangeImageDiffType={this.onChangeImageDiffType}
         onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+        showUnityAsText={this.state.showUnityAsText}
+        onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
       />
     )
   }

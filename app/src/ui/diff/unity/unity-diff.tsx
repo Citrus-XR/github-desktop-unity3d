@@ -361,7 +361,7 @@ export class UnityDiff extends React.Component<
           {this.state.errorMessage !== null
             ? `: ${this.state.errorMessage}`
             : ''}
-          . Use “Show text diff” to view the raw changes.
+          . Switch to Raw diff to view the raw changes.
         </div>
       )
     }
@@ -382,8 +382,8 @@ export class UnityDiff extends React.Component<
     if (result.status !== 'parsed' && result.status !== 'partially-parsed') {
       return (
         <div className="unity-diff-message">
-          This asset is not viewable as Unity YAML ({result.status}). Use “Show
-          text diff” to view the raw changes.
+          This asset is not viewable as Unity YAML ({result.status}). Switch to
+          Raw diff to view the raw changes.
         </div>
       )
     }

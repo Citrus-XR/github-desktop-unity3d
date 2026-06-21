@@ -112,6 +112,12 @@ interface IDiffProps {
 
   /** Called when the user changes the hide whitespace in diffs setting. */
   readonly onHideWhitespaceInDiffChanged: (checked: boolean) => void
+
+  /** Whether a Unity semantic diff is being shown as a raw text diff. */
+  readonly showUnityAsText?: boolean
+
+  /** Called when the user changes the Unity diff presentation mode. */
+  readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
 }
 
 interface IDiffState {
@@ -161,46 +167,12 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
   }
 
   private renderUnityDiff(diff: IUnityDiff) {
+    const showUnityAsText = this.showUnityAsText
+
     return (
       <div className="unity-diff-container">
-        <div className="unity-diff-toolbar">
-          {this.state.showUnityAsText ? null : (
-            <div className="unity-toolbar-options">
-              <Button
-                className={
-                  this.state.showUnityUnchanged
-                    ? 'unity-toolbar-toggle is-toggled'
-                    : 'unity-toolbar-toggle'
-                }
-                onClick={this.toggleUnityUnchanged}
-                ariaLabel="Toggle showing unchanged properties"
-              >
-                {__DARWIN__ ? 'Show Unchanged' : 'Show unchanged'}
-              </Button>
-              <Button
-                className={
-                  this.state.unityAlwaysOpenLarge
-                    ? 'unity-toolbar-toggle is-toggled'
-                    : 'unity-toolbar-toggle'
-                }
-                onClick={this.toggleUnityAlwaysOpenLarge}
-                ariaLabel="Toggle always opening large files"
-              >
-                {__DARWIN__ ? 'Always Open Large' : 'Always open large'}
-              </Button>
-            </div>
-          )}
-          <Button onClick={this.toggleUnityAsText}>
-            {this.state.showUnityAsText
-              ? __DARWIN__
-                ? 'Show Unity Inspector'
-                : 'Show Unity inspector'
-              : __DARWIN__
-              ? 'Show Text Diff'
-              : 'Show text diff'}
-          </Button>
-        </div>
-        {this.state.showUnityAsText ? (
+        {this.renderUnityToolbar(showUnityAsText)}
+        {showUnityAsText ? (
           this.renderTextDiff({
             kind: DiffType.Text,
             text: diff.text,
@@ -222,8 +194,84 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
     )
   }
 
+  private get showUnityAsText() {
+    return this.isUnityDiffModeControlled
+      ? this.props.showUnityAsText === true
+      : this.state.showUnityAsText
+  }
+
+  private get isUnityDiffModeControlled() {
+    return (
+      this.props.showUnityAsText !== undefined &&
+      this.props.onShowUnityAsTextChanged !== undefined
+    )
+  }
+
+  private renderUnityToolbar(showUnityAsText: boolean) {
+    const showInternalModeToggle = !this.isUnityDiffModeControlled
+
+    if (showUnityAsText && !showInternalModeToggle) {
+      return null
+    }
+
+    return (
+      <div className="unity-diff-toolbar">
+        {showUnityAsText ? null : (
+          <div
+            className={
+              showInternalModeToggle
+                ? 'unity-toolbar-options has-mode-toggle'
+                : 'unity-toolbar-options'
+            }
+          >
+            <Button
+              className={
+                this.state.showUnityUnchanged
+                  ? 'unity-toolbar-toggle is-toggled'
+                  : 'unity-toolbar-toggle'
+              }
+              onClick={this.toggleUnityUnchanged}
+              ariaLabel="Toggle showing unchanged properties"
+            >
+              {__DARWIN__ ? 'Show Unchanged' : 'Show unchanged'}
+            </Button>
+            <Button
+              className={
+                this.state.unityAlwaysOpenLarge
+                  ? 'unity-toolbar-toggle is-toggled'
+                  : 'unity-toolbar-toggle'
+              }
+              onClick={this.toggleUnityAlwaysOpenLarge}
+              ariaLabel="Toggle always opening large files"
+            >
+              {__DARWIN__ ? 'Always Open Large' : 'Always open large'}
+            </Button>
+          </div>
+        )}
+        {showInternalModeToggle && (
+          <Button onClick={this.toggleUnityAsText}>
+            {showUnityAsText
+              ? __DARWIN__
+                ? 'Show Semantic Diff'
+                : 'Show semantic diff'
+              : __DARWIN__
+              ? 'Show Raw Diff'
+              : 'Show raw diff'}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   private toggleUnityAsText = () => {
-    this.setState({ showUnityAsText: !this.state.showUnityAsText })
+    const showUnityAsText = !this.showUnityAsText
+
+    if (this.isUnityDiffModeControlled) {
+      this.props.onShowUnityAsTextChanged?.(showUnityAsText)
+      return
+    }
+
+    this.setState({ showUnityAsText })
   }
 
   private toggleUnityUnchanged = () => {
