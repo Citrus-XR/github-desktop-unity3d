@@ -5,10 +5,8 @@
  * still renders with its raw structure intact.
  *
  * Class IDs are stable engine identifiers: newer/older editors overwhelmingly
- * *add* IDs rather than renumber existing ones, so this table is a sound default
- * across nearby versions. Where a specific Unity version adds or renames an ID,
- * layer the difference on with `registerClassNames` rather than forking the
- * table — that keeps the call sites (`getClassName`) version-agnostic.
+ * *add* IDs rather than renumber existing ones, so this table is a sound
+ * default across nearby versions.
  *
  * Reference: https://docs.unity3d.com/2022.3/Documentation/Manual/ClassIDReference.html
  */
@@ -342,25 +340,8 @@ export const unity2022_3ClassNames: ReadonlyMap<number, string> = new Map([
   [2089858483, 'ScriptedImporter'],
 ])
 
-// The active table consulted by `getClassName`, seeded with 2022.3. Adapting to
-// another Unity version layers overrides on top of this without touching the
-// many call sites that resolve class names.
-let classNames = new Map<number, string>(unity2022_3ClassNames)
-
-/**
- * Extend or override the active class-ID table — the version-adaptation hook.
- * By default the new entries are merged over 2022.3 (add IDs from a newer
- * editor, or rename one that differs); pass `replace` to swap the table wholesale
- * for a fully version-specific set.
- */
-export const registerClassNames = (
-  entries: Iterable<readonly [number, string]>,
-  { replace = false }: { replace?: boolean } = {}
-): void => {
-  classNames = replace
-    ? new Map(entries)
-    : new Map<number, string>([...classNames, ...entries])
-}
+// The active table consulted by `getClassName`, seeded with 2022.3.
+const classNames: ReadonlyMap<number, string> = unity2022_3ClassNames
 
 /** The friendly name for a class ID, or a `Class<id>` placeholder if unknown. */
 export const getClassName = (classId: number): string =>

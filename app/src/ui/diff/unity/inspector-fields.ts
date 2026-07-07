@@ -16,6 +16,8 @@ import {
   UnityChangeStatus,
 } from '../../../models/unity/semantic-diff'
 
+export { basenameWithoutExtension } from '../../../lib/unity/asset-diff'
+
 export const statusClass = (status: UnityChangeStatus): string =>
   `unity-status-${status}`
 
@@ -63,13 +65,6 @@ export const scalarSide = (
   value: UnityPropertyValue | null
 ): string | undefined =>
   value !== null && value.kind === 'scalar' ? value.value : undefined
-
-/** The basename of a `/`-separated path with its final extension removed. */
-export const basenameWithoutExtension = (path: string): string => {
-  const file = path.slice(path.lastIndexOf('/') + 1)
-  const dot = file.lastIndexOf('.')
-  return dot > 0 ? file.slice(0, dot) : file
-}
 
 /** The field whose value drives a component's header checkbox, if any. */
 export const toggleFieldFor = (

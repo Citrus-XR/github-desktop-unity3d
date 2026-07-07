@@ -1,16 +1,19 @@
 /**
  * Scans a repository's `.meta` files to build a GUID/path index for the working
- * tree. Only `Assets/` and `Packages/` are walked. Symlinked directories are
- * skipped to prevent traversal outside the repository and to avoid cycles, and
- * recursion depth is bounded as a safety limit against pathological trees.
+ * tree. Only `Assets/`, `Packages/`, and `Library/PackageCache/` are walked.
+ * Symlinked directories are skipped to prevent traversal outside the repository
+ * and to avoid cycles, and recursion depth is bounded as a safety limit against
+ * pathological trees.
  *
- * Results are cached per repository path. Incremental invalidation on file
- * changes is a later phase; for now the index is built once on first use.
+ * Results are cached per repository path with a short TTL, so a working-tree
+ * change (a new script, a renamed prefab) picks up on the next request instead
+ * of staying stale until the app restarts.
  */
 
 import { join, relative, sep } from 'path'
 import { readdir, readFile } from 'fs/promises'
 import { buildMetaIndex, IMetaFile, MetaIndex } from '../../lib/unity/meta-index'
+import { isErrnoException } from '../../lib/errno-exception'
 
 // `Library/PackageCache` is an optional source: it holds the text `.prefab`/
 // `.meta` files of cached (non-embedded) packages, which scene/prefab instances
@@ -19,6 +22,13 @@ import { buildMetaIndex, IMetaFile, MetaIndex } from '../../lib/unity/meta-index
 // artifact database, just more YAML/meta files.
 const scannedRoots = ['Assets', 'Packages', 'Library/PackageCache']
 const maxDepth = 64
+
+// Cached meta indices live for this long before a fresh scan on the next
+// request. A running Unity session frequently creates and moves assets, so an
+// index that is stable-for-the-session goes wrong as soon as the user adds a
+// script or renames a prefab; bounding the staleness re-scans on demand instead
+// of asking the user to restart.
+const metaIndexTtlMs = 30_000
 
 // Bound on simultaneously open file descriptors while reading `.meta` files. A
 // large Unity project holds tens of thousands of them; reading without a cap
@@ -40,9 +50,14 @@ const collectMetaPaths = async (
   let entries
   try {
     entries = await readdir(dir, { withFileTypes: true })
-  } catch {
-    // The directory may not exist (e.g. no Packages/) — not an error.
-    return
+  } catch (e) {
+    // Missing / not-a-directory is expected (e.g. no Packages/, no
+    // Library/PackageCache/). Anything else — permission errors, IO errors —
+    // is a real problem the caller should see rather than a silent empty scan.
+    if (isErrnoException(e) && (e.code === 'ENOENT' || e.code === 'ENOTDIR')) {
+      return
+    }
+    throw e
   }
 
   // Recurse into subdirectories concurrently and collect `.meta` paths. A
@@ -76,8 +91,14 @@ const readMetaFiles = async (
       try {
         const content = await readFile(fullPath, 'utf8')
         out.push({ metaPath: toRepoRelativePath(repoPath, fullPath), content })
-      } catch {
-        // Skip unreadable meta files; a partial index is acceptable.
+      } catch (e) {
+        // A meta that disappeared between the walk and the read is fine (a
+        // partial index is acceptable). Other errno values are not — surface
+        // them rather than silently skipping.
+        if (isErrnoException(e) && e.code === 'ENOENT') {
+          continue
+        }
+        throw e
       }
     }
   }
@@ -86,7 +107,11 @@ const readMetaFiles = async (
   return out
 }
 
-const cache = new Map<string, Promise<MetaIndex>>()
+interface ICacheEntry {
+  readonly promise: Promise<MetaIndex>
+  readonly builtAt: number
+}
+const cache = new Map<string, ICacheEntry>()
 
 const scan = async (repoPath: string): Promise<MetaIndex> => {
   const paths = new Array<string>()
@@ -101,10 +126,10 @@ export const getWorkingTreeMetaIndex = (
   repoPath: string
 ): Promise<MetaIndex> => {
   const cached = cache.get(repoPath)
-  if (cached !== undefined) {
-    return cached
+  if (cached !== undefined && Date.now() - cached.builtAt < metaIndexTtlMs) {
+    return cached.promise
   }
-  const building = scan(repoPath)
-  cache.set(repoPath, building)
-  return building
+  const entry: ICacheEntry = { promise: scan(repoPath), builtAt: Date.now() }
+  cache.set(repoPath, entry)
+  return entry.promise
 }

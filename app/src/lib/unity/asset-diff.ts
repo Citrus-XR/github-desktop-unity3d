@@ -23,10 +23,10 @@ import {
 import { buildHierarchy } from './hierarchy-builder'
 import { expandPrefabInstances } from './prefab-expansion'
 import { computeSemanticDiff, IUnityParsedSide } from './semantic-diff'
-import { sourcePrefabGuidOf } from './prefab-diff'
+import { diffPrefabInstances, sourcePrefabGuidOf } from './prefab-diff'
 
 /** The basename of a `/`-separated path with its final extension removed. */
-const basenameWithoutExtension = (path: string): string => {
+export const basenameWithoutExtension = (path: string): string => {
   const file = path.slice(path.lastIndexOf('/') + 1)
   const dot = file.lastIndexOf('.')
   return dot > 0 ? file.slice(0, dot) : file
@@ -106,10 +106,13 @@ export const computeUnityAssetDiff = (
     ? expandSide(after.documents, afterInstanceRoots)
     : { documents: after.documents, roots: after.roots }
 
-  const { roots, documents, prefabInstances } = computeSemanticDiff(
-    beforeSide,
-    afterSide
-  )
+  const { roots, documents } = computeSemanticDiff(beforeSide, afterSide)
+  // PrefabInstance (!u!1001) diffing runs against the ORIGINAL, un-expanded
+  // documents on purpose: expandPrefabInstances drops the 1001s from its
+  // output (their content is grafted into the tree instead), so an expanded
+  // side never carries a 1001 to compare — running the override diff on the
+  // pre-expansion sides is what surfaces per-override modification/add/remove.
+  const prefabInstances = diffPrefabInstances(before.documents, after.documents)
 
   const enrichedInstances = prefabInstances.map(instance => {
     const sourcePrefabPath =

@@ -19,12 +19,10 @@ import {
   IUnityComponentDiffRef,
   IUnityDocumentDiff,
   IUnityGameObjectDiffNode,
-  IUnityPrefabInstanceDiff,
   IUnityPropertyDiff,
   UnityChangeStatus,
 } from '../../models/unity/semantic-diff'
 import { getClassName } from '../../models/unity/class-ids'
-import { diffPrefabInstances } from './prefab-diff'
 
 /** One parsed side of an asset. */
 export interface IUnityParsedSide {
@@ -177,6 +175,111 @@ export const indexById = <T extends { fileId: UnityFileId }>(
   return map
 }
 
+/** One row of a sequence diff, matched by LCS. */
+export interface IUnitySequenceDiffRow {
+  /** Position to label the row with (after-side index, falling back to before). */
+  readonly index: number
+  readonly before: UnityPropertyValue | null
+  readonly after: UnityPropertyValue | null
+  readonly status: UnityChangeStatus
+}
+
+/**
+ * LCS-based diff of two property sequences (e.g. `m_Materials`, `m_Component`).
+ * Positional diffing marks every element after a single-element insertion as
+ * modified; LCS matches equal elements around the change so the same edit
+ * shows as one 'added' row. An immediately-adjacent (removed, added) pair is
+ * coalesced into a 'modified' row so an in-place element mutation reads as
+ * one entry rather than two.
+ */
+export const diffPropertySequence = (
+  before: ReadonlyArray<UnityPropertyValue>,
+  after: ReadonlyArray<UnityPropertyValue>
+): ReadonlyArray<IUnitySequenceDiffRow> => {
+  const m = before.length
+  const n = after.length
+  const dp = Array.from({ length: m + 1 }, () =>
+    new Array<number>(n + 1).fill(0)
+  )
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = valueEquals(before[i - 1], after[j - 1])
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+  const rows = new Array<IUnitySequenceDiffRow>()
+  let i = m
+  let j = n
+  while (i > 0 && j > 0) {
+    if (valueEquals(before[i - 1], after[j - 1])) {
+      rows.unshift({
+        index: j - 1,
+        before: before[i - 1],
+        after: after[j - 1],
+        status: 'unchanged',
+      })
+      i--
+      j--
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      rows.unshift({
+        index: i - 1,
+        before: before[i - 1],
+        after: null,
+        status: 'removed',
+      })
+      i--
+    } else {
+      rows.unshift({
+        index: j - 1,
+        before: null,
+        after: after[j - 1],
+        status: 'added',
+      })
+      j--
+    }
+  }
+  while (i > 0) {
+    rows.unshift({
+      index: i - 1,
+      before: before[i - 1],
+      after: null,
+      status: 'removed',
+    })
+    i--
+  }
+  while (j > 0) {
+    rows.unshift({
+      index: j - 1,
+      before: null,
+      after: after[j - 1],
+      status: 'added',
+    })
+    j--
+  }
+  const coalesced = new Array<IUnitySequenceDiffRow>()
+  for (let k = 0; k < rows.length; k++) {
+    const cur = rows[k]
+    const next = rows[k + 1]
+    if (
+      cur.status === 'removed' &&
+      next !== undefined &&
+      next.status === 'added'
+    ) {
+      coalesced.push({
+        index: next.index,
+        before: cur.before,
+        after: next.after,
+        status: 'modified',
+      })
+      k++
+    } else {
+      coalesced.push(cur)
+    }
+  }
+  return coalesced
+}
+
 const flattenHierarchy = (
   roots: ReadonlyArray<IUnityGameObjectNode>
 ): Map<UnityFileId, IUnityGameObjectNode> => {
@@ -214,14 +317,13 @@ const componentRefs = (
   })
 }
 
-/** Compute the full semantic diff for one asset's two parsed sides. */
+/** Compute the merged hierarchy diff and per-document property diffs. */
 export const computeSemanticDiff = (
   before: IUnityParsedSide,
   after: IUnityParsedSide
 ): {
   roots: ReadonlyArray<IUnityGameObjectDiffNode>
   documents: ReadonlyArray<IUnityDocumentDiff>
-  prefabInstances: ReadonlyArray<IUnityPrefabInstanceDiff>
 } => {
   const beforeDocs = indexById(before.documents)
   const afterDocs = indexById(after.documents)
@@ -330,6 +432,5 @@ export const computeSemanticDiff = (
   return {
     roots,
     documents,
-    prefabInstances: diffPrefabInstances(before.documents, after.documents),
   }
 }

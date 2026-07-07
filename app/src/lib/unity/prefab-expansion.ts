@@ -21,7 +21,6 @@ import {
   UnityPropertyValue,
 } from '../../models/unity/serialized-asset'
 import { transformClassIds } from '../../models/unity/class-ids'
-
 /** Resolve a source prefab's parsed documents by GUID (null if unavailable). */
 export type SourcePrefabResolver = (
   guid: string
@@ -34,6 +33,16 @@ const prefabInstanceClassId = 1001
 const maxExpansionDepth = 8
 const signMask = 0x7fffffffffffffffn
 
+// Sentinel XOR'd into a placeholder Transform's id to derive a synthesized
+// GameObject id for it (see the second pass in expandPrefabInstances). Keeps
+// the id numeric so it survives further `remap` calls at outer expansion
+// levels; bit 62 stays inside the 63-bit fileID space and is far above any
+// densely packed real ids.
+const dummyGameObjectSentinel = 1n << 62n
+
+const scalarOf = (value: UnityPropertyValue | undefined): string | undefined =>
+  value !== undefined && value.kind === 'scalar' ? value.value : undefined
+
 /**
  * Derive an instance object's fileID from the PrefabInstance id and the source
  * object id (`(P ^ S) & 0x7fff…`). Matches the ids Unity writes for stripped
@@ -42,13 +51,8 @@ const signMask = 0x7fffffffffffffffn
 export const remapFileId = (
   prefabInstanceId: UnityFileId,
   sourceFileId: UnityFileId
-): UnityFileId => {
-  try {
-    return ((BigInt(prefabInstanceId) ^ BigInt(sourceFileId)) & signMask).toString()
-  } catch {
-    return sourceFileId
-  }
-}
+): UnityFileId =>
+  ((BigInt(prefabInstanceId) ^ BigInt(sourceFileId)) & signMask).toString()
 
 type Remap = (sourceFileId: UnityFileId) => UnityFileId
 
@@ -346,6 +350,12 @@ export const expandPrefabInstances = (
 
   const placeholders = strippedPlaceholdersByInstance(documents)
   const rootTransformByInstance = new Map<UnityFileId, UnityFileId>()
+  // Per-instance expanded source docs indexed by source fileId, kept for the
+  // fallback pass so it can look up a placeholder's real source object name.
+  const expandedSourceByInstance = new Map<
+    UnityFileId,
+    ReadonlyMap<UnityFileId, IUnitySerializedDocument>
+  >()
 
   for (const instance of documents) {
     if (instance.classId !== prefabInstanceClassId) {
@@ -395,6 +405,7 @@ export const expandPrefabInstances = (
     const expandedSourceById = new Map<UnityFileId, IUnitySerializedDocument>(
       expandedSource.map(doc => [doc.fileId, doc])
     )
+    expandedSourceByInstance.set(instance.fileId, expandedSourceById)
     const removedSourceIds = new Set<UnityFileId>(
       rawRemovedFileIds(instance, 'm_RemovedComponents')
     )
@@ -470,37 +481,93 @@ export const expandPrefabInstances = (
     }
   }
 
+  // Fallback pass for instances whose source couldn't be fully expanded (e.g.
+  // an imported model whose `.meta` name table is empty, so we recovered zero
+  // objects). Only stripped Transform placeholders participate here — a
+  // GameObject placeholder alone doesn't drive tree nesting, and pairing each
+  // Transform with a synthesized GameObject at a derived id gives every
+  // instance one node in the merged tree instead of a duplicated pair. When
+  // the synthesized root sits at depth 0 it also feeds `instanceRoots` so the
+  // enclosing prefab-instance diff colours a real hierarchy node.
+  const strippedTransformsByInstance = new Map<
+    UnityFileId,
+    Array<IUnitySerializedDocument>
+  >()
+  for (const doc of documents) {
+    if (!doc.stripped || !transformClassIds.has(doc.classId)) {
+      continue
+    }
+    const instanceId = referenceFileId(
+      findProperty(doc.properties, 'm_PrefabInstance')
+    )
+    if (instanceId === undefined) {
+      continue
+    }
+    const list = strippedTransformsByInstance.get(instanceId) ?? []
+    list.push(doc)
+    strippedTransformsByInstance.set(instanceId, list)
+  }
+
   for (const instance of documents) {
     if (instance.classId !== prefabInstanceClassId) {
       continue
     }
-    const placeholderMap = placeholders.get(instance.fileId)
-    if (placeholderMap === undefined) {
+    const strippedTransforms =
+      strippedTransformsByInstance.get(instance.fileId) ?? []
+    const toMaterialize = strippedTransforms.filter(t => !out.has(t.fileId))
+    if (toMaterialize.length === 0) {
       continue
     }
+
     const source = findProperty(instance.properties, 'm_SourcePrefab')
     const guid =
       source !== undefined && source.kind === 'reference'
         ? source.reference.guid
         : undefined
-    const name = guid !== undefined ? resolveSourceName(guid) ?? '' : ''
+    const prefabName = guid !== undefined ? resolveSourceName(guid) ?? '' : ''
     const modification = findProperty(instance.properties, 'm_Modification')
     const transformParent =
       modification !== undefined && modification.kind === 'map'
         ? referenceFileId(findProperty(modification.entries, 'm_TransformParent'))
         : undefined
 
-    const sceneIds = Array.from(placeholderMap.values()).filter(id => !out.has(id))
-    if (sceneIds.length === 0) {
-      continue
+    const expandedSourceById = expandedSourceByInstance.get(instance.fileId)
+    const nameOfSource = (sourceId: UnityFileId): string => {
+      const doc = expandedSourceById?.get(sourceId)
+      if (doc === undefined) {
+        return prefabName
+      }
+      if (doc.classId === 1) {
+        return scalarOf(findProperty(doc.properties, 'm_Name')) ?? prefabName
+      }
+      if (transformClassIds.has(doc.classId)) {
+        const gameObjectId = referenceFileId(findProperty(doc.properties, 'm_GameObject'))
+        const gameObject =
+          gameObjectId !== undefined ? expandedSourceById?.get(gameObjectId) : undefined
+        return gameObject !== undefined
+          ? scalarOf(findProperty(gameObject.properties, 'm_Name')) ?? prefabName
+          : prefabName
+      }
+      return prefabName
     }
-    const materializedRoot = rootTransformByInstance.get(instance.fileId)
-    const partsParent = materializedRoot ?? sceneIds[0]
 
-    for (const sceneId of sceneIds) {
-      const father =
-        sceneId === partsParent ? transformParent ?? '0' : partsParent
-      const gameObjectId = `${sceneId}-go`
+    const materializedRoot = rootTransformByInstance.get(instance.fileId)
+    const rootTransformId = materializedRoot ?? toMaterialize[0].fileId
+
+    for (const strippedTransform of toMaterialize) {
+      const transformId = strippedTransform.fileId
+      const isRoot = transformId === rootTransformId
+      const father = isRoot ? transformParent ?? '0' : rootTransformId
+      const sourceId = referenceFileId(
+        findProperty(strippedTransform.properties, 'm_CorrespondingSourceObject')
+      )
+      const name = sourceId !== undefined ? nameOfSource(sourceId) : prefabName
+      // Bit-flip that keeps the id numeric while distinguishing it from the
+      // placeholder Transform id we derived it from.
+      const gameObjectId = (
+        (BigInt(transformId) ^ dummyGameObjectSentinel) &
+        signMask
+      ).toString()
       out.set(gameObjectId, {
         classId: 1,
         fileId: gameObjectId,
@@ -519,7 +586,7 @@ export const expandPrefabInstances = (
                 {
                   kind: 'map',
                   entries: [
-                    { key: 'component', value: { kind: 'reference', reference: { fileId: sceneId, propertyPath: 'component' } } },
+                    { key: 'component', value: { kind: 'reference', reference: { fileId: transformId, propertyPath: 'component' } } },
                   ],
                 },
               ],
@@ -527,9 +594,9 @@ export const expandPrefabInstances = (
           },
         ],
       })
-      out.set(sceneId, {
+      out.set(transformId, {
         classId: 4,
-        fileId: sceneId,
+        fileId: transformId,
         typeName: 'Transform',
         rootKey: 'Transform',
         stripped: false,
@@ -540,6 +607,15 @@ export const expandPrefabInstances = (
           { key: 'm_Children', value: { kind: 'sequence', items: [] } },
         ],
       })
+
+      if (
+        isRoot &&
+        depth === 0 &&
+        instanceRoots !== undefined &&
+        !instanceRoots.has(instance.fileId)
+      ) {
+        instanceRoots.set(instance.fileId, gameObjectId)
+      }
     }
   }
 

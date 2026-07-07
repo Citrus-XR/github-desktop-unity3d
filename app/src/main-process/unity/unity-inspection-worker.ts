@@ -6,11 +6,12 @@
  * are far too large to ship across the thread boundary; the worker reads source
  * prefabs from the working tree itself.
  *
- * It is stateful: source prefabs are cached per repository, and the expanded
- * documents of the most recent diffs are kept so a single node's property diff
- * can be served on demand (`kind: 'docs'`). This keeps the eager diff result
- * small — it carries only the changed documents — while the Inspector can still
- * show any node's values without re-running the whole pipeline.
+ * It is stateful: source prefabs and the project's layer names are cached per
+ * repository with a short TTL, and the expanded documents of the most recent
+ * diffs are kept so a single node's property diff can be served on demand
+ * (`kind: 'docs'`). This keeps the eager diff result small — it carries only
+ * the changed documents — while the Inspector can still show any node's values
+ * without re-running the whole pipeline.
  */
 
 import { parentPort } from 'worker_threads'
@@ -38,6 +39,7 @@ import {
   IUnitySerializedDocument,
   UnityFileId,
 } from '../../models/unity/serialized-asset'
+import { isErrnoException } from '../../lib/errno-exception'
 
 export interface IUnityDiffRequest {
   readonly id: number
@@ -88,14 +90,28 @@ export type IUnityWorkerResponse =
 const maxSourcePrefabs = 5000
 /** How many recent diffs keep their expanded documents for on-demand lookups. */
 const maxCachedDiffs = 2
+/** Simultaneous open descriptors while resolving source prefabs, matching
+ *  meta-scanner's cap — an unlimited fan-out over hundreds of guids on a big
+ *  scene exhausts the process's file-descriptor limit (EMFILE). */
+const maxConcurrentReads = 128
+/** Freshness window on the per-repo caches below. Long enough that back-to-back
+ *  requests on the same scene share their reads, short enough that a working-
+ *  tree change (a renamed prefab, an edited TagManager) shows up on the next
+ *  request instead of only after restarting the app. */
+const cacheTtlMs = 60_000
+
+interface IRepoSourceCache {
+  readonly builtAt: number
+  readonly entries: Map<
+    string,
+    ReadonlyArray<IUnitySerializedDocument> | null
+  >
+}
 
 // Parsed source-prefab documents per repository (null = resolved-but-absent, so
-// we don't re-attempt). Stable within a session, matching the main process's
-// build-once Meta index policy.
-const sourceCacheByRepo = new Map<
-  string,
-  Map<string, ReadonlyArray<IUnitySerializedDocument> | null>
->()
+// we don't re-attempt within the TTL). Expires as a whole after cacheTtlMs so
+// working-tree edits in Unity aren't stuck behind a stale entry.
+const sourceCacheByRepo = new Map<string, IRepoSourceCache>()
 
 interface ICachedDiff {
   readonly before: Map<UnityFileId, IUnitySerializedDocument>
@@ -173,7 +189,7 @@ const parseSide = (present: boolean, content: string): IParsedAssetSide => {
   }
 }
 
-/** Read and parse one source by path (working tree), or null if unreadable. */
+/** Read and parse one source by path (working tree), or null if absent. */
 const resolveSourceDocs = async (
   repoPath: string,
   path: string
@@ -188,8 +204,15 @@ const resolveSourceDocs = async (
     }
     const content = await readFile(join(repoPath, path), 'utf8')
     return parseUnityYaml(content).documents
-  } catch {
-    return null
+  } catch (e) {
+    // A missing source file (the guid pointed at something no longer on disk)
+    // is expected. Anything else — permission, IO, or a parse error — should
+    // surface rather than silently dropping the source and floating whatever
+    // referenced it.
+    if (isErrnoException(e) && e.code === 'ENOENT') {
+      return null
+    }
+    throw e
   }
 }
 
@@ -198,9 +221,11 @@ const buildSourceMap = async (
   rootDocuments: ReadonlyArray<IUnitySerializedDocument>,
   pathByGuid: ReadonlyMap<string, string>
 ): Promise<Map<string, ReadonlyArray<IUnitySerializedDocument>>> => {
-  const repoCache =
-    sourceCacheByRepo.get(repoPath) ??
-    new Map<string, ReadonlyArray<IUnitySerializedDocument> | null>()
+  const existing = sourceCacheByRepo.get(repoPath)
+  const repoCache: IRepoSourceCache =
+    existing !== undefined && Date.now() - existing.builtAt < cacheTtlMs
+      ? existing
+      : { builtAt: Date.now(), entries: new Map() }
   sourceCacheByRepo.set(repoPath, repoCache)
 
   const map = new Map<string, ReadonlyArray<IUnitySerializedDocument>>()
@@ -223,7 +248,7 @@ const buildSourceMap = async (
         continue
       }
       seen.add(guid)
-      const cached = repoCache.get(guid)
+      const cached = repoCache.entries.get(guid)
       if (cached !== undefined) {
         if (cached !== null) {
           map.set(guid, cached)
@@ -237,14 +262,22 @@ const buildSourceMap = async (
       }
     }
 
-    const fetched = await Promise.all(
-      toFetch.map(async ({ guid, path }) => ({
-        guid,
-        docs: await resolveSourceDocs(repoPath, path),
-      }))
-    )
+    const fetched = new Array<{
+      guid: string
+      docs: ReadonlyArray<IUnitySerializedDocument> | null
+    }>(toFetch.length)
+    let cursor = 0
+    const reader = async (): Promise<void> => {
+      while (cursor < toFetch.length) {
+        const index = cursor++
+        const { guid, path } = toFetch[index]
+        fetched[index] = { guid, docs: await resolveSourceDocs(repoPath, path) }
+      }
+    }
+    const lanes = Math.min(maxConcurrentReads, toFetch.length)
+    await Promise.all(Array.from({ length: lanes }, reader))
     for (const { guid, docs } of fetched) {
-      repoCache.set(guid, docs)
+      repoCache.entries.set(guid, docs)
       if (docs !== null) {
         map.set(guid, docs)
         enqueue(docs)
@@ -256,16 +289,21 @@ const buildSourceMap = async (
   return map
 }
 
-// Project layer names (index → name) per repository, read once from
-// TagManager.asset. Stable within a session, matching the source cache.
-const layerNamesByRepo = new Map<string, ReadonlyArray<string>>()
+interface ILayerNamesCache {
+  readonly builtAt: number
+  readonly names: ReadonlyArray<string>
+}
+// Project layer names (index → name) per repository, read from
+// TagManager.asset. Expires alongside the source cache so a Unity-side layer
+// rename picks up on the next request.
+const layerNamesByRepo = new Map<string, ILayerNamesCache>()
 
 const readLayerNames = async (
   repoPath: string
 ): Promise<ReadonlyArray<string>> => {
   const cached = layerNamesByRepo.get(repoPath)
-  if (cached !== undefined) {
-    return cached
+  if (cached !== undefined && Date.now() - cached.builtAt < cacheTtlMs) {
+    return cached.names
   }
   let names: ReadonlyArray<string> = []
   try {
@@ -282,10 +320,15 @@ const readLayerNames = async (
         item.kind === 'scalar' ? item.value : ''
       )
     }
-  } catch {
-    // No TagManager (or unreadable) — the renderer falls back to built-ins.
+  } catch (e) {
+    // No TagManager (a repo that isn't a Unity project, or one that hasn't
+    // committed its ProjectSettings) — fall back to built-in layer names.
+    // Anything else is surfaced so we don't hide a real failure.
+    if (!isErrnoException(e) || e.code !== 'ENOENT') {
+      throw e
+    }
   }
-  layerNamesByRepo.set(repoPath, names)
+  layerNamesByRepo.set(repoPath, { builtAt: Date.now(), names })
   return names
 }
 

@@ -48,8 +48,13 @@ const parseBoolean = (value: string | undefined): boolean | undefined => {
   return undefined
 }
 
+// Serialized integers Unity writes are plain decimal (no whitespace, no radix
+// prefix, no scientific notation). Guard against `Number('')` = 0 and other
+// tolerant coercions so a corrupted empty scalar reads as "missing" rather
+// than silently mapping to layer 0 / tag 0 / etc.
+const decimalIntegerPattern = /^-?\d+$/
 const parseInteger = (value: string | undefined): number | undefined => {
-  if (value === undefined) {
+  if (value === undefined || !decimalIntegerPattern.test(value)) {
     return undefined
   }
   const parsed = Number(value)

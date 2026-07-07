@@ -21,7 +21,7 @@ import {
   IUnitySemanticDiffResult,
   UnityChangeStatus,
 } from '../../../models/unity/semantic-diff'
-import { valueEquals } from '../../../lib/unity/semantic-diff'
+import { diffPropertySequence, valueEquals } from '../../../lib/unity/semantic-diff'
 import {
   CollapsibleArray,
   CollapsibleValue,
@@ -923,44 +923,27 @@ export class UnityInspector extends React.Component<
     after: ReadonlyArray<UnityPropertyValue>,
     result: IUnitySemanticDiffResult
   ): React.ReactNode {
-    const length = Math.max(before.length, after.length)
-    const rows = new Array<{
-      index: number
-      b: UnityPropertyValue | null
-      a: UnityPropertyValue | null
-      status: UnityChangeStatus
-    }>()
-    for (let index = 0; index < length; index++) {
-      const b = before[index] ?? null
-      const a = after[index] ?? null
-      const status: UnityChangeStatus =
-        b === null
-          ? 'added'
-          : a === null
-          ? 'removed'
-          : valueEquals(b, a)
-          ? 'unchanged'
-          : 'modified'
-      if (this.props.showUnchanged || status !== 'unchanged') {
-        rows.push({ index, b, a, status })
-      }
-    }
+    const allRows = diffPropertySequence(before, after)
+    const rows = this.props.showUnchanged
+      ? allRows
+      : allRows.filter(r => r.status !== 'unchanged')
+    const totalItems = Math.max(before.length, after.length)
     return (
       <CollapsibleArray
         summary={
-          rows.length === length
-            ? `[${length} item${length === 1 ? '' : 's'}]`
-            : `[${rows.length} of ${length} changed]`
+          rows.length === allRows.length
+            ? `[${totalItems} item${totalItems === 1 ? '' : 's'}]`
+            : `[${rows.length} of ${totalItems} changed]`
         }
         defaultExpanded={!this.forceCollapseArrays && rows.length <= 8}
       >
         <span className="unity-sequence">
-          {rows.map(r => (
-            <React.Fragment key={r.index}>
+          {rows.map((r, i) => (
+            <React.Fragment key={i}>
               {this.renderEntryDiff(
                 r.index,
-                r.b,
-                r.a,
+                r.before,
+                r.after,
                 r.status,
                 'unity-sequence-index',
                 result

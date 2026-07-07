@@ -171,7 +171,9 @@ export class UnityDiff extends React.Component<
    * Ensure the Inspector has the document diffs for a selected node — its own
    * GameObject document and each component. Changed documents are already in the
    * cache (seeded from the eager result); any missing (unchanged) ones are
-   * fetched on demand and merged in. A no-op when nothing is missing.
+   * fetched on demand and merged in. A no-op when nothing is missing. Failures
+   * surface as the same error banner the initial load uses, so a worker crash
+   * on document fetch doesn't become an unhandled rejection.
    */
   private async ensureDocumentsLoaded(fileId: UnityFileId | null) {
     const { result } = this.state
@@ -188,17 +190,27 @@ export class UnityDiff extends React.Component<
       return
     }
     const token = this.loadToken
-    const documents = await diffUnityAssetDocuments(this.currentRequest(), missing)
-    if (token !== this.loadToken || !this.mounted) {
-      return
-    }
-    this.setState(prev => {
-      const docCache = new Map(prev.docCache)
-      for (const doc of documents) {
-        docCache.set(doc.fileId, doc)
+    try {
+      const documents = await diffUnityAssetDocuments(this.currentRequest(), missing)
+      if (token !== this.loadToken || !this.mounted) {
+        return
       }
-      return { docCache }
-    })
+      this.setState(prev => {
+        const docCache = new Map(prev.docCache)
+        for (const doc of documents) {
+          docCache.set(doc.fileId, doc)
+        }
+        return { docCache }
+      })
+    } catch (e) {
+      if (token !== this.loadToken || !this.mounted) {
+        return
+      }
+      this.setState({
+        phase: 'error',
+        errorMessage: e instanceof Error ? e.message : String(e),
+      })
+    }
   }
 
   private async load(force: boolean) {
@@ -258,6 +270,41 @@ export class UnityDiff extends React.Component<
   }
 
   private defaultSelection(result: IUnitySemanticDiffResult): UnityFileId | null {
+    // Prefer a changed thing so the Inspector opens on real content rather
+    // than an unchanged root that renders as "No changes in this object" and
+    // hides that anything changed at all. Order: a modified hierarchy node,
+    // then a modified prefab instance (at its node when we could locate one,
+    // otherwise at its own fileId so it selects in the bottom prefab list),
+    // then a changed standalone document, and finally the first root/document
+    // when nothing changed.
+    const findChangedNode = (
+      nodes: ReadonlyArray<IUnityGameObjectDiffNode>
+    ): UnityFileId | null => {
+      for (const node of nodes) {
+        if (node.status !== 'unchanged') {
+          return node.fileId
+        }
+        const found = findChangedNode(node.children)
+        if (found !== null) {
+          return found
+        }
+      }
+      return null
+    }
+    const changedNode = findChangedNode(result.roots)
+    if (changedNode !== null) {
+      return changedNode
+    }
+    const changedPrefab = result.prefabInstances.find(
+      p => p.status !== 'unchanged'
+    )
+    if (changedPrefab !== undefined) {
+      return changedPrefab.nodeFileId ?? changedPrefab.fileId
+    }
+    const changedDoc = result.documents.find(d => d.status !== 'unchanged')
+    if (changedDoc !== undefined) {
+      return changedDoc.fileId
+    }
     if (result.roots.length > 0) {
       return result.roots[0].fileId
     }
