@@ -26,7 +26,7 @@ export function getExecutableName() {
   if (process.platform === 'win32') {
     return `${getWindowsIdentifierName()}${suffix}`
   } else if (process.platform === 'linux') {
-    return 'desktop'
+    return 'desktop-u'
   } else {
     return productName
   }
@@ -95,7 +95,7 @@ export function getWindowsDeltaNugetPackagePath() {
 }
 
 export function getWindowsIdentifierName() {
-  return 'GitHubDesktop'
+  return 'GitHubDesktopU'
 }
 
 export function getBundleSizes() {
