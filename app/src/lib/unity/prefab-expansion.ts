@@ -73,13 +73,18 @@ const remapReference = (
   return fileId === ref.fileId ? ref : { ...ref, fileId }
 }
 
-const remapValue = (value: UnityPropertyValue, remap: Remap): UnityPropertyValue => {
+const remapValue = (
+  value: UnityPropertyValue,
+  remap: Remap
+): UnityPropertyValue => {
   switch (value.kind) {
     case 'scalar':
       return value
     case 'reference': {
       const reference = remapReference(value.reference, remap)
-      return reference === value.reference ? value : { kind: 'reference', reference }
+      return reference === value.reference
+        ? value
+        : { kind: 'reference', reference }
     }
     case 'map': {
       let changed = false
@@ -165,7 +170,9 @@ interface IModification {
   readonly value: string
 }
 
-const modificationsOf = (doc: IUnitySerializedDocument): ReadonlyArray<IModification> => {
+const modificationsOf = (
+  doc: IUnitySerializedDocument
+): ReadonlyArray<IModification> => {
   const modification = findProperty(doc.properties, 'm_Modification')
   if (modification === undefined || modification.kind !== 'map') {
     return []
@@ -186,7 +193,8 @@ const modificationsOf = (doc: IUnitySerializedDocument): ReadonlyArray<IModifica
       result.push({
         targetFileId: target,
         propertyPath: path.value,
-        value: value !== undefined && value.kind === 'scalar' ? value.value : '',
+        value:
+          value !== undefined && value.kind === 'scalar' ? value.value : '',
       })
     }
   }
@@ -273,12 +281,18 @@ const gameObjectSubtreeIds = (
     for (const componentId of componentIds(gameObject)) {
       ids.add(componentId)
       const component = documentsById.get(componentId)
-      if (component === undefined || !transformClassIds.has(component.classId)) {
+      if (
+        component === undefined ||
+        !transformClassIds.has(component.classId)
+      ) {
         continue
       }
       for (const childTransformId of childrenByFather.get(componentId) ?? []) {
         const childGameObject = referenceFileId(
-          findProperty(documentsById.get(childTransformId)?.properties ?? [], 'm_GameObject')
+          findProperty(
+            documentsById.get(childTransformId)?.properties ?? [],
+            'm_GameObject'
+          )
         )
         if (childGameObject !== undefined) {
           visit(childGameObject)
@@ -304,7 +318,9 @@ const rawRemovedFileIds = (
     return []
   }
   return list.items
-    .map(item => (item.kind === 'reference' ? item.reference.fileId : undefined))
+    .map(item =>
+      item.kind === 'reference' ? item.reference.fileId : undefined
+    )
     .filter((id): id is UnityFileId => id !== undefined && id !== '0')
 }
 
@@ -316,14 +332,17 @@ const strippedPlaceholdersByInstance = (
     if (!doc.stripped) {
       continue
     }
-    const instanceId = referenceFileId(findProperty(doc.properties, 'm_PrefabInstance'))
+    const instanceId = referenceFileId(
+      findProperty(doc.properties, 'm_PrefabInstance')
+    )
     const sourceId = referenceFileId(
       findProperty(doc.properties, 'm_CorrespondingSourceObject')
     )
     if (instanceId === undefined || sourceId === undefined) {
       continue
     }
-    const inner = byInstance.get(instanceId) ?? new Map<UnityFileId, UnityFileId>()
+    const inner =
+      byInstance.get(instanceId) ?? new Map<UnityFileId, UnityFileId>()
     inner.set(sourceId, doc.fileId)
     byInstance.set(instanceId, inner)
   }
@@ -363,7 +382,9 @@ export const expandPrefabInstances = (
     }
     const source = findProperty(instance.properties, 'm_SourcePrefab')
     const guid =
-      source !== undefined && source.kind === 'reference' ? source.reference.guid : undefined
+      source !== undefined && source.kind === 'reference'
+        ? source.reference.guid
+        : undefined
     if (guid === undefined) {
       continue
     }
@@ -528,7 +549,9 @@ export const expandPrefabInstances = (
     const modification = findProperty(instance.properties, 'm_Modification')
     const transformParent =
       modification !== undefined && modification.kind === 'map'
-        ? referenceFileId(findProperty(modification.entries, 'm_TransformParent'))
+        ? referenceFileId(
+            findProperty(modification.entries, 'm_TransformParent')
+          )
         : undefined
 
     const expandedSourceById = expandedSourceByInstance.get(instance.fileId)
@@ -541,11 +564,16 @@ export const expandPrefabInstances = (
         return scalarOf(findProperty(doc.properties, 'm_Name')) ?? prefabName
       }
       if (transformClassIds.has(doc.classId)) {
-        const gameObjectId = referenceFileId(findProperty(doc.properties, 'm_GameObject'))
+        const gameObjectId = referenceFileId(
+          findProperty(doc.properties, 'm_GameObject')
+        )
         const gameObject =
-          gameObjectId !== undefined ? expandedSourceById?.get(gameObjectId) : undefined
+          gameObjectId !== undefined
+            ? expandedSourceById?.get(gameObjectId)
+            : undefined
         return gameObject !== undefined
-          ? scalarOf(findProperty(gameObject.properties, 'm_Name')) ?? prefabName
+          ? scalarOf(findProperty(gameObject.properties, 'm_Name')) ??
+              prefabName
           : prefabName
       }
       return prefabName
@@ -559,7 +587,10 @@ export const expandPrefabInstances = (
       const isRoot = transformId === rootTransformId
       const father = isRoot ? transformParent ?? '0' : rootTransformId
       const sourceId = referenceFileId(
-        findProperty(strippedTransform.properties, 'm_CorrespondingSourceObject')
+        findProperty(
+          strippedTransform.properties,
+          'm_CorrespondingSourceObject'
+        )
       )
       const name = sourceId !== undefined ? nameOfSource(sourceId) : prefabName
       // Bit-flip that keeps the id numeric while distinguishing it from the
@@ -586,7 +617,16 @@ export const expandPrefabInstances = (
                 {
                   kind: 'map',
                   entries: [
-                    { key: 'component', value: { kind: 'reference', reference: { fileId: transformId, propertyPath: 'component' } } },
+                    {
+                      key: 'component',
+                      value: {
+                        kind: 'reference',
+                        reference: {
+                          fileId: transformId,
+                          propertyPath: 'component',
+                        },
+                      },
+                    },
                   ],
                 },
               ],
@@ -602,8 +642,20 @@ export const expandPrefabInstances = (
         stripped: false,
         rawTextRange: { start: 0, end: 0 },
         properties: [
-          { key: 'm_GameObject', value: { kind: 'reference', reference: { fileId: gameObjectId, propertyPath: 'm_GameObject' } } },
-          { key: 'm_Father', value: { kind: 'reference', reference: { fileId: father, propertyPath: 'm_Father' } } },
+          {
+            key: 'm_GameObject',
+            value: {
+              kind: 'reference',
+              reference: { fileId: gameObjectId, propertyPath: 'm_GameObject' },
+            },
+          },
+          {
+            key: 'm_Father',
+            value: {
+              kind: 'reference',
+              reference: { fileId: father, propertyPath: 'm_Father' },
+            },
+          },
           { key: 'm_Children', value: { kind: 'sequence', items: [] } },
         ],
       })

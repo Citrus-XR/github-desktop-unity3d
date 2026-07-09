@@ -10,7 +10,10 @@ import {
   UnityPropertyValue,
 } from '../../models/unity/serialized-asset'
 
-const collectFromValue = (value: UnityPropertyValue, into: Set<string>): void => {
+const collectFromValue = (
+  value: UnityPropertyValue,
+  into: Set<string>
+): void => {
   switch (value.kind) {
     case 'reference':
       if (value.reference.guid !== undefined) {

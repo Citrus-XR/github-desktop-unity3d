@@ -25,8 +25,7 @@ const gameObjectClassId = 1
 const findProperty = (
   properties: ReadonlyArray<IUnityPropertyNode>,
   key: string
-): UnityPropertyValue | undefined =>
-  properties.find(n => n.key === key)?.value
+): UnityPropertyValue | undefined => properties.find(n => n.key === key)?.value
 
 const scalarOf = (value: UnityPropertyValue | undefined): string | undefined =>
   value !== undefined && value.kind === 'scalar' ? value.value : undefined
@@ -73,7 +72,9 @@ const readTransform = (doc: IUnitySerializedDocument): ITransformInfo => {
   const childIds =
     childrenValue !== undefined && childrenValue.kind === 'sequence'
       ? childrenValue.items
-          .map(item => (item.kind === 'reference' ? item.reference.fileId : undefined))
+          .map(item =>
+            item.kind === 'reference' ? item.reference.fileId : undefined
+          )
           .filter((id): id is UnityFileId => id !== undefined)
       : []
 
@@ -238,8 +239,12 @@ export const buildHierarchy = (
     return {
       fileId: gameObject.fileId,
       name: scalarOf(findProperty(gameObject.properties, 'm_Name')) ?? '',
-      active: parseBoolean(scalarOf(findProperty(gameObject.properties, 'm_IsActive'))),
-      layer: parseInteger(scalarOf(findProperty(gameObject.properties, 'm_Layer'))),
+      active: parseBoolean(
+        scalarOf(findProperty(gameObject.properties, 'm_IsActive'))
+      ),
+      layer: parseInteger(
+        scalarOf(findProperty(gameObject.properties, 'm_Layer'))
+      ),
       tag: scalarOf(findProperty(gameObject.properties, 'm_TagString')),
       parentFileId: parentGameObjectId,
       isModel: gameObject.isModelDummy === true ? true : undefined,

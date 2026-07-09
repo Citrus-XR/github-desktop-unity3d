@@ -29,10 +29,7 @@ const pathExists = async (
 export const isUnityProject = async (rootPath: string): Promise<boolean> => {
   const [hasAssets, hasProjectVersion] = await Promise.all([
     pathExists(join(rootPath, 'Assets'), 'directory'),
-    pathExists(
-      join(rootPath, 'ProjectSettings', 'ProjectVersion.txt'),
-      'file'
-    ),
+    pathExists(join(rootPath, 'ProjectSettings', 'ProjectVersion.txt'), 'file'),
   ])
   return hasAssets && hasProjectVersion
 }

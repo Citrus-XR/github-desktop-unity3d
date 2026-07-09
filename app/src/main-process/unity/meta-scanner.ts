@@ -12,7 +12,11 @@
 
 import { join, relative, sep } from 'path'
 import { readdir, readFile } from 'fs/promises'
-import { buildMetaIndex, IMetaFile, MetaIndex } from '../../lib/unity/meta-index'
+import {
+  buildMetaIndex,
+  IMetaFile,
+  MetaIndex,
+} from '../../lib/unity/meta-index'
 import { isErrnoException } from '../../lib/errno-exception'
 
 // `Library/PackageCache` is an optional source: it holds the text `.prefab`/

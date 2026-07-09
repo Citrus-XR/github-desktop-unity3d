@@ -15,7 +15,10 @@ const prop = (
 ): UnityPropertyValue | undefined => nodes.find(n => n.key === key)?.value
 
 const scalar = (value: UnityPropertyValue | undefined): string => {
-  assert.ok(value && value.kind === 'scalar', `expected scalar, got ${value?.kind}`)
+  assert.ok(
+    value && value.kind === 'scalar',
+    `expected scalar, got ${value?.kind}`
+  )
   return value.value
 }
 
@@ -71,9 +74,11 @@ describe('parseUnityYaml', () => {
 
   it('parses an inline flow mapping as a nested map of scalars', () => {
     const result = parseUnityYaml(
-      ['--- !u!4 &1', 'Transform:', '  m_LocalPosition: {x: 1, y: 2.5, z: -3}'].join(
-        '\n'
-      )
+      [
+        '--- !u!4 &1',
+        'Transform:',
+        '  m_LocalPosition: {x: 1, y: 2.5, z: -3}',
+      ].join('\n')
     )
     const pos = prop(result.documents[0].properties, 'm_LocalPosition')
     assert.ok(pos && pos.kind === 'map')
@@ -174,14 +179,20 @@ describe('parseUnityYaml', () => {
       ['--- !u!1 &1', 'GameObject:', '  m_Name: Player'].join('\r\n')
     )
     assert.equal(result.status, 'parsed')
-    assert.equal(scalar(prop(result.documents[0].properties, 'm_Name')), 'Player')
+    assert.equal(
+      scalar(prop(result.documents[0].properties, 'm_Name')),
+      'Player'
+    )
   })
 
   it('handles non-ASCII object names', () => {
     const result = parseUnityYaml(
       ['--- !u!1 &1', 'GameObject:', '  m_Name: プレイヤー'].join('\n')
     )
-    assert.equal(scalar(prop(result.documents[0].properties, 'm_Name')), 'プレイヤー')
+    assert.equal(
+      scalar(prop(result.documents[0].properties, 'm_Name')),
+      'プレイヤー'
+    )
   })
 
   it('decodes \\uXXXX escapes in double-quoted scalars (Unity non-ASCII)', () => {

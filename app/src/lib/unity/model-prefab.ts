@@ -84,8 +84,7 @@ export const buildModelDocuments = (
   rootName: string
 ): ReadonlyArray<IUnitySerializedDocument> => {
   const transforms = objects.filter(o => transformClassIds.has(o.classId))
-  const root =
-    transforms.find(t => t.name === '//RootNode') ?? transforms.at(0)
+  const root = transforms.find(t => t.name === '//RootNode') ?? transforms.at(0)
   if (root === undefined) {
     return []
   }
@@ -116,7 +115,10 @@ export const buildModelDocuments = (
               {
                 kind: 'map',
                 entries: [
-                  { key: 'component', value: reference(transform.fileId, 'component') },
+                  {
+                    key: 'component',
+                    value: reference(transform.fileId, 'component'),
+                  },
                 ],
               },
             ],

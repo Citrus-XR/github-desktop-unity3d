@@ -187,7 +187,10 @@ const parseInlineValue = (
     const inner = text.slice(1, end === -1 ? text.length : end)
     const entries = parseFlowEntries(inner)
     if (entries.some(e => e.key === 'fileID')) {
-      return { kind: 'reference', reference: buildReference(entries, propertyPath) }
+      return {
+        kind: 'reference',
+        reference: buildReference(entries, propertyPath),
+      }
     }
     return {
       kind: 'map',
@@ -286,7 +289,10 @@ const parseNestedValue = (
 
   if (next.indent > parentIndent) {
     const mapping = parseMapping(lines, start, next.indent, path)
-    return { value: { kind: 'map', entries: mapping.value }, next: mapping.next }
+    return {
+      value: { kind: 'map', entries: mapping.value },
+      next: mapping.next,
+    }
   }
 
   return { value: { kind: 'scalar', value: '' }, next: start }
@@ -307,8 +313,7 @@ const parseSequence = (
     lines[i].indent === indent &&
     isSequenceItem(lines[i])
   ) {
-    const afterDash =
-      lines[i].content === '-' ? '' : lines[i].content.slice(2)
+    const afterDash = lines[i].content === '-' ? '' : lines[i].content.slice(2)
     const itemPath = `${path}[${index}]`
 
     if (isMappingItem(afterDash)) {

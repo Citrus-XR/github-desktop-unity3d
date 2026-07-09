@@ -13,12 +13,11 @@ import {
   IUnitySemanticDiffRequest,
   IUnitySemanticDiffResult,
 } from '../../../models/unity/semantic-diff'
-import { diffUnityAsset, diffUnityAssetDocuments } from '../../main-process-proxy'
 import {
-  countNodes,
-  findGameObject,
-  statusClass,
-} from './inspector-fields'
+  diffUnityAsset,
+  diffUnityAssetDocuments,
+} from '../../main-process-proxy'
+import { countNodes, findGameObject, statusClass } from './inspector-fields'
 import { UnityInspector } from './unity-inspector'
 import { Button } from '../../lib/button'
 import { Resizable } from '../../resizable'
@@ -85,7 +84,9 @@ const computeExpansion = (
       }
     }
     const hasChange =
-      node.status !== 'unchanged' || extraChanged.has(node.fileId) || childChanged
+      node.status !== 'unchanged' ||
+      extraChanged.has(node.fileId) ||
+      childChanged
     if (hasChange) {
       changedSubtree.add(node.fileId)
     }
@@ -191,7 +192,10 @@ export class UnityDiff extends React.Component<
     }
     const token = this.loadToken
     try {
-      const documents = await diffUnityAssetDocuments(this.currentRequest(), missing)
+      const documents = await diffUnityAssetDocuments(
+        this.currentRequest(),
+        missing
+      )
       if (token !== this.loadToken || !this.mounted) {
         return
       }
@@ -233,7 +237,10 @@ export class UnityDiff extends React.Component<
       // Changed prefab instances surfaced at their hierarchy node.
       const prefabByNode = new Map<UnityFileId, IUnityPrefabInstanceDiff>()
       for (const instance of result.prefabInstances) {
-        if (instance.nodeFileId !== undefined && instance.status !== 'unchanged') {
+        if (
+          instance.nodeFileId !== undefined &&
+          instance.status !== 'unchanged'
+        ) {
           prefabByNode.set(instance.nodeFileId, instance)
         }
       }
@@ -269,7 +276,9 @@ export class UnityDiff extends React.Component<
     }
   }
 
-  private defaultSelection(result: IUnitySemanticDiffResult): UnityFileId | null {
+  private defaultSelection(
+    result: IUnitySemanticDiffResult
+  ): UnityFileId | null {
     // Prefer a changed thing so the Inspector opens on real content rather
     // than an unchanged root that renders as "No changes in this object" and
     // hides that anything changed at all. Order: a modified hierarchy node,
@@ -454,7 +463,8 @@ export class UnityDiff extends React.Component<
       )
     }
 
-    const flat = result.roots.length === 0 && result.prefabInstances.length === 0
+    const flat =
+      result.roots.length === 0 && result.prefabInstances.length === 0
     const visibleDocs = flat
       ? result.documents.filter(
           d => this.props.showUnchanged || d.status !== 'unchanged'
@@ -539,7 +549,9 @@ export class UnityDiff extends React.Component<
       .map(doc => (
         <div
           key={doc.fileId}
-          className={`${this.rowClassName(doc.fileId)} ${statusClass(doc.status)}`}
+          className={`${this.rowClassName(doc.fileId)} ${statusClass(
+            doc.status
+          )}`}
           data-fileid={doc.fileId}
           onClick={this.onSelect}
         >
@@ -607,9 +619,7 @@ export class UnityDiff extends React.Component<
             <span className="unity-tree-toggle unity-tree-leaf" />
           )}
           <span>{node.name.length > 0 ? node.name : '(unnamed)'}</span>
-          {node.isModel ? (
-            <span className="unity-model-tag">model</span>
-          ) : null}
+          {node.isModel ? <span className="unity-model-tag">model</span> : null}
         </div>
         {hasVisibleDescendant ? renderedChildren : null}
       </div>
@@ -638,7 +648,9 @@ export class UnityDiff extends React.Component<
     return instances.map(inst => (
       <div
         key={`prefab-${inst.fileId}`}
-        className={`${this.rowClassName(inst.fileId)} ${statusClass(inst.status)}`}
+        className={`${this.rowClassName(inst.fileId)} ${statusClass(
+          inst.status
+        )}`}
         data-fileid={inst.fileId}
         onClick={this.onSelect}
       >
@@ -649,6 +661,4 @@ export class UnityDiff extends React.Component<
       </div>
     ))
   }
-
-
 }

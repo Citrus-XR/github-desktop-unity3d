@@ -96,7 +96,9 @@ describe('computeSemanticDiff', () => {
     const diff = computeSemanticDiff(before, after)
     const monoBehaviour = diff.documents.find(d => d.fileId === '102')
     assert.equal(monoBehaviour?.status, 'modified')
-    const speed = monoBehaviour?.properties.find(p => p.key === 'm_RotationSpeed')
+    const speed = monoBehaviour?.properties.find(
+      p => p.key === 'm_RotationSpeed'
+    )
     assert.equal(speed?.status, 'modified')
     assert.ok(speed?.before?.kind === 'scalar' && speed.before.value === '30')
     assert.ok(speed?.after?.kind === 'scalar' && speed.after.value === '45')
@@ -129,9 +131,33 @@ describe('diffProperties', () => {
 
 describe('valueEquals', () => {
   it('compares references by fileId, guid and type', () => {
-    const a = { kind: 'reference' as const, reference: { fileId: '5', guid: 'g', referenceType: 2, propertyPath: 'p' } }
-    const b = { kind: 'reference' as const, reference: { fileId: '5', guid: 'g', referenceType: 2, propertyPath: 'other' } }
-    const c = { kind: 'reference' as const, reference: { fileId: '6', guid: 'g', referenceType: 2, propertyPath: 'p' } }
+    const a = {
+      kind: 'reference' as const,
+      reference: {
+        fileId: '5',
+        guid: 'g',
+        referenceType: 2,
+        propertyPath: 'p',
+      },
+    }
+    const b = {
+      kind: 'reference' as const,
+      reference: {
+        fileId: '5',
+        guid: 'g',
+        referenceType: 2,
+        propertyPath: 'other',
+      },
+    }
+    const c = {
+      kind: 'reference' as const,
+      reference: {
+        fileId: '6',
+        guid: 'g',
+        referenceType: 2,
+        propertyPath: 'p',
+      },
+    }
     assert.equal(valueEquals(a, b), true)
     assert.equal(valueEquals(a, c), false)
   })

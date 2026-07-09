@@ -58,10 +58,12 @@ describe('diffPrefabInstances', () => {
     const after = parseUnityYaml(
       instance(
         '10',
-        ['    - target: {fileID: 599465214307944399, guid: abcd, type: 3}',
-         '      propertyPath: m_LocalPosition.y',
-         '      value: 7',
-         '      objectReference: {fileID: 0}'].join('\n')
+        [
+          '    - target: {fileID: 599465214307944399, guid: abcd, type: 3}',
+          '      propertyPath: m_LocalPosition.y',
+          '      value: 7',
+          '      objectReference: {fileID: 0}',
+        ].join('\n')
       )
     ).documents
 

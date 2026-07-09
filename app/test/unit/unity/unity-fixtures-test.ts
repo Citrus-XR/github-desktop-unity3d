@@ -37,11 +37,21 @@ describe('Unity fixtures', () => {
     const index = buildMetaIndex([
       {
         metaPath: 'SampleProject/Assets/Scripts/Rotator.cs.meta',
-        content: readFixture('SampleProject', 'Assets', 'Scripts', 'Rotator.cs.meta'),
+        content: readFixture(
+          'SampleProject',
+          'Assets',
+          'Scripts',
+          'Rotator.cs.meta'
+        ),
       },
       {
         metaPath: 'SampleProject/Assets/Materials/Red.mat.meta',
-        content: readFixture('SampleProject', 'Assets', 'Materials', 'Red.mat.meta'),
+        content: readFixture(
+          'SampleProject',
+          'Assets',
+          'Materials',
+          'Red.mat.meta'
+        ),
       },
     ])
 

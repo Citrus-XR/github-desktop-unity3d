@@ -62,7 +62,9 @@ export class MetaIndex {
       ...(parsed.importerType !== undefined
         ? { importerType: parsed.importerType }
         : {}),
-      ...(metaFile.metaHash !== undefined ? { metaHash: metaFile.metaHash } : {}),
+      ...(metaFile.metaHash !== undefined
+        ? { metaHash: metaFile.metaHash }
+        : {}),
     }
     this.byGuid.set(record.guid, record)
     this.byPath.set(path, record)

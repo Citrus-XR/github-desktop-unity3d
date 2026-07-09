@@ -17,7 +17,9 @@ const prop = (
 ): UnityPropertyValue | undefined => nodes.find(n => n.key === key)?.value
 
 const refId = (value: UnityPropertyValue | undefined): string | undefined =>
-  value !== undefined && value.kind === 'reference' ? value.reference.fileId : undefined
+  value !== undefined && value.kind === 'reference'
+    ? value.reference.fileId
+    : undefined
 
 const scalar = (value: UnityPropertyValue | undefined): string | undefined =>
   value !== undefined && value.kind === 'scalar' ? value.value : undefined
@@ -90,7 +92,10 @@ describe('expandPrefabInstances', () => {
 
   it('drops the PrefabInstance document after expansion', () => {
     const expanded = expandPrefabInstances(instanceDocs, resolve)
-    assert.equal(expanded.some(d => d.classId === 1001), false)
+    assert.equal(
+      expanded.some(d => d.classId === 1001),
+      false
+    )
   })
 
   it('leaves documents unchanged when the source cannot be resolved', () => {
@@ -128,6 +133,9 @@ describe('expandPrefabInstances', () => {
 
 describe('remapFileId', () => {
   it('is XOR of the two ids masked to 63 bits', () => {
-    assert.equal(remapFileId('5000', '100'), ((5000n ^ 100n) & 0x7fffffffffffffffn).toString())
+    assert.equal(
+      remapFileId('5000', '100'),
+      ((5000n ^ 100n) & 0x7fffffffffffffffn).toString()
+    )
   })
 })

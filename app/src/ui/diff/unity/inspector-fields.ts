@@ -57,7 +57,9 @@ export const resolveLayerName = (
     return fromProject
   }
   const builtin = builtinLayerNames[index]
-  return builtin !== undefined && builtin.length > 0 ? builtin : `Layer ${index}`
+  return builtin !== undefined && builtin.length > 0
+    ? builtin
+    : `Layer ${index}`
 }
 
 /** The scalar value of a property on one side, or undefined. */
@@ -74,7 +76,9 @@ export const toggleFieldFor = (
   if (typeName === 'GameObject') {
     return 'm_IsActive'
   }
-  return doc.properties.some(p => p.key === 'm_Enabled') ? 'm_Enabled' : undefined
+  return doc.properties.some(p => p.key === 'm_Enabled')
+    ? 'm_Enabled'
+    : undefined
 }
 
 // A field-list schema for components that just need a friendly, ordered subset
@@ -121,7 +125,11 @@ const componentSchemas: ReadonlyMap<string, IComponentSchema> = new Map([
         { key: 'm_UseGravity', label: 'Use Gravity', kind: 'bool' },
         { key: 'm_IsKinematic', label: 'Is Kinematic', kind: 'bool' },
         { key: 'm_Interpolate', label: 'Interpolate', kind: 'value' },
-        { key: 'm_CollisionDetection', label: 'Collision Detection', kind: 'value' },
+        {
+          key: 'm_CollisionDetection',
+          label: 'Collision Detection',
+          kind: 'value',
+        },
         { key: 'm_Constraints', label: 'Constraints', kind: 'value' },
       ],
     },
@@ -134,12 +142,20 @@ const componentSchemas: ReadonlyMap<string, IComponentSchema> = new Map([
         { key: 'm_Materials', label: 'Materials', kind: 'value' },
         { key: 'm_CastShadows', label: 'Cast Shadows', kind: 'value' },
         { key: 'm_ReceiveShadows', label: 'Receive Shadows', kind: 'bool' },
-        { key: 'm_StaticShadowCaster', label: 'Static Shadow Caster', kind: 'bool' },
+        {
+          key: 'm_StaticShadowCaster',
+          label: 'Static Shadow Caster',
+          kind: 'bool',
+        },
         { key: 'm_MotionVectors', label: 'Motion Vectors', kind: 'value' },
         { key: 'm_DynamicOccludee', label: 'Dynamic Occlusion', kind: 'bool' },
         { key: 'm_ReceiveGI', label: 'Receive GI', kind: 'value' },
         { key: 'm_LightProbeUsage', label: 'Light Probes', kind: 'value' },
-        { key: 'm_ReflectionProbeUsage', label: 'Reflection Probes', kind: 'value' },
+        {
+          key: 'm_ReflectionProbeUsage',
+          label: 'Reflection Probes',
+          kind: 'value',
+        },
         { key: 'm_ProbeAnchor', label: 'Anchor Override', kind: 'value' },
       ],
     },
@@ -147,7 +163,9 @@ const componentSchemas: ReadonlyMap<string, IComponentSchema> = new Map([
 ])
 
 export const schemaFor = (typeName: string): IComponentSchema | undefined =>
-  typeName.includes('Collider') ? colliderSchema : componentSchemas.get(typeName)
+  typeName.includes('Collider')
+    ? colliderSchema
+    : componentSchemas.get(typeName)
 
 /** Render a 0/1 scalar value as a checkbox glyph, passing anything else through. */
 export const checkboxGlyph = (value: string | undefined): string =>

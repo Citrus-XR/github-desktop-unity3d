@@ -38,7 +38,10 @@ export interface IUnityObjectReference {
 export type UnityPropertyValue =
   | { readonly kind: 'scalar'; readonly value: string }
   | { readonly kind: 'reference'; readonly reference: IUnityObjectReference }
-  | { readonly kind: 'map'; readonly entries: ReadonlyArray<IUnityPropertyNode> }
+  | {
+      readonly kind: 'map'
+      readonly entries: ReadonlyArray<IUnityPropertyNode>
+    }
   | {
       readonly kind: 'sequence'
       readonly items: ReadonlyArray<UnityPropertyValue>

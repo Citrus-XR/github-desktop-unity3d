@@ -21,7 +21,10 @@ import {
   IUnitySemanticDiffResult,
   UnityChangeStatus,
 } from '../../../models/unity/semantic-diff'
-import { diffPropertySequence, valueEquals } from '../../../lib/unity/semantic-diff'
+import {
+  diffPropertySequence,
+  valueEquals,
+} from '../../../lib/unity/semantic-diff'
 import {
   CollapsibleArray,
   CollapsibleValue,
@@ -73,7 +76,11 @@ export class UnityInspector extends React.Component<
   private gameObjectNameById = new Map<UnityFileId, string>()
   private componentOwnerById = new Map<
     UnityFileId,
-    { readonly owner: string; readonly ownerFileId: UnityFileId; readonly type: string }
+    {
+      readonly owner: string
+      readonly ownerFileId: UnityFileId
+      readonly type: string
+    }
   >()
 
   public render() {
@@ -185,7 +192,9 @@ export class UnityInspector extends React.Component<
           <h2 className="unity-inspector-title">
             {gameObject.name.length > 0 ? gameObject.name : '(unnamed)'}
           </h2>
-          {showOwn ? this.renderDocumentSection('GameObject', own, result) : null}
+          {showOwn
+            ? this.renderDocumentSection('GameObject', own, result)
+            : null}
           {visibleComponents.map(component => {
             const doc = docs.get(component.fileId)
             return doc !== undefined
@@ -221,10 +230,7 @@ export class UnityInspector extends React.Component<
           ? this.renderMaterialBody(doc, result)
           : this.renderProperties(
               doc.properties.filter(
-                p =>
-                  !(
-                    alwaysHiddenFields.has(p.key) && p.status !== 'modified'
-                  )
+                p => !(alwaysHiddenFields.has(p.key) && p.status !== 'modified')
               ),
               result
             )}
@@ -263,7 +269,9 @@ export class UnityInspector extends React.Component<
     )
     return (
       <div className="unity-properties">
-        {show(shader) ? this.renderLabeledValue('Shader', shader!, result) : null}
+        {show(shader)
+          ? this.renderLabeledValue('Shader', shader!, result)
+          : null}
         {show(renderQueue)
           ? this.renderScalarField('Render Queue', renderQueue)
           : null}
@@ -318,7 +326,8 @@ export class UnityInspector extends React.Component<
       <>
         <h2 className="unity-inspector-title">{prefab.name}</h2>
         <div className="unity-inspector-meta">
-          Prefab: {prefab.sourcePrefabPath ?? prefab.sourcePrefabGuid ?? 'unknown'}
+          Prefab:{' '}
+          {prefab.sourcePrefabPath ?? prefab.sourcePrefabGuid ?? 'unknown'}
         </div>
         <div className="unity-component-title">Overrides</div>
         {visible.length === 0 ? (
@@ -395,13 +404,17 @@ export class UnityInspector extends React.Component<
           data-fileid={doc.fileId}
           onClick={this.onToggleComponent}
         >
-          <span className="unity-component-toggle">{collapsed ? '▸' : '▾'}</span>
+          <span className="unity-component-toggle">
+            {collapsed ? '▸' : '▾'}
+          </span>
           {toggleProp !== undefined
             ? this.renderEnabledCheckbox(toggleProp)
             : null}
           <span className="unity-component-name">{scriptName ?? typeName}</span>
         </div>
-        {collapsed ? null : this.renderComponentBody(typeName, doc, result, hidden)}
+        {collapsed
+          ? null
+          : this.renderComponentBody(typeName, doc, result, hidden)}
       </div>
     )
   }
@@ -462,7 +475,11 @@ export class UnityInspector extends React.Component<
         <div className="unity-go-tag-layer">
           {this.renderScalarField('Tag', find('m_TagString'))}
           {this.renderScalarField('Layer', find('m_Layer'), layerName)}
-          {this.renderScalarField('Static', find('m_StaticEditorFlags'), staticBox)}
+          {this.renderScalarField(
+            'Static',
+            find('m_StaticEditorFlags'),
+            staticBox
+          )}
         </div>
         {this.renderModifiedExtras(doc, result, hidden, primary)}
       </div>
@@ -599,10 +616,7 @@ export class UnityInspector extends React.Component<
     primary: ReadonlySet<string>
   ) {
     const extras = doc.properties.filter(
-      p =>
-        !hidden.has(p.key) &&
-        !primary.has(p.key) &&
-        p.status === 'modified'
+      p => !hidden.has(p.key) && !primary.has(p.key) && p.status === 'modified'
     )
     return extras.map(prop => this.renderPropertyRow(prop, result, true))
   }
@@ -646,22 +660,27 @@ export class UnityInspector extends React.Component<
         : new Map<string, UnityPropertyValue>()
     const before = axesOf(prop.before)
     const after = axesOf(prop.after)
-    const keys = ['x', 'y', 'z', 'w'].filter(
-      k => before.has(k) || after.has(k)
-    )
+    const keys = ['x', 'y', 'z', 'w'].filter(k => before.has(k) || after.has(k))
     return (
-      <div className={`unity-property unity-vector ${statusClass(prop.status)}`}>
+      <div
+        className={`unity-property unity-vector ${statusClass(prop.status)}`}
+      >
         <span className="unity-property-key">{label}</span>
         <span className="unity-property-value unity-vector-axes">
           {keys.map(k => {
             const b = scalarSide(before.get(k) ?? null)
             const a = scalarSide(after.get(k) ?? null)
             const changed =
-              prop.status === 'modified' && before.has(k) && after.has(k) && b !== a
+              prop.status === 'modified' &&
+              before.has(k) &&
+              after.has(k) &&
+              b !== a
             return (
               <span
                 key={k}
-                className={`unity-axis ${changed ? 'unity-status-modified' : ''}`}
+                className={`unity-axis ${
+                  changed ? 'unity-status-modified' : ''
+                }`}
               >
                 <span className="unity-axis-label">{k.toUpperCase()}</span>
                 {changed ? (
@@ -681,7 +700,6 @@ export class UnityInspector extends React.Component<
     )
   }
 
-
   /** The MonoBehaviour script's file name (resolved via GUID), or null. */
   private componentScriptName(
     typeName: string,
@@ -693,11 +711,19 @@ export class UnityInspector extends React.Component<
     }
     const scriptProp = doc.properties.find(p => p.key === 'm_Script')
     const ref = scriptProp?.after ?? scriptProp?.before ?? null
-    if (ref === null || ref.kind !== 'reference' || ref.reference.guid === undefined) {
+    if (
+      ref === null ||
+      ref.kind !== 'reference' ||
+      ref.reference.guid === undefined
+    ) {
       return null
     }
-    const resolved = result.resolvedGuids.find(g => g.guid === ref.reference.guid)
-    return resolved !== undefined ? basenameWithoutExtension(resolved.path) : null
+    const resolved = result.resolvedGuids.find(
+      g => g.guid === ref.reference.guid
+    )
+    return resolved !== undefined
+      ? basenameWithoutExtension(resolved.path)
+      : null
   }
 
   /** A Unity-style header checkbox for an enabled/active field's diff. */
@@ -841,8 +867,14 @@ export class UnityInspector extends React.Component<
   }
 
   private renderMapDiff(
-    before: ReadonlyArray<{ readonly key: string; readonly value: UnityPropertyValue }>,
-    after: ReadonlyArray<{ readonly key: string; readonly value: UnityPropertyValue }>,
+    before: ReadonlyArray<{
+      readonly key: string
+      readonly value: UnityPropertyValue
+    }>,
+    after: ReadonlyArray<{
+      readonly key: string
+      readonly value: UnityPropertyValue
+    }>,
     result: IUnitySemanticDiffResult
   ): React.ReactNode {
     const beforeByKey = new Map(before.map(e => [e.key, e.value]))
@@ -863,11 +895,14 @@ export class UnityInspector extends React.Component<
           {keys.map((key, index) => {
             const b = scalarSide(beforeByKey.get(key) ?? null)
             const a = scalarSide(afterByKey.get(key) ?? null)
-            const changed = beforeByKey.has(key) && afterByKey.has(key) && b !== a
+            const changed =
+              beforeByKey.has(key) && afterByKey.has(key) && b !== a
             return (
               <span
                 key={index}
-                className={`unity-axis ${changed ? 'unity-status-modified' : ''}`}
+                className={`unity-axis ${
+                  changed ? 'unity-status-modified' : ''
+                }`}
               >
                 <span className="unity-axis-label">{key.toUpperCase()}</span>
                 {changed ? (
@@ -998,7 +1033,9 @@ export class UnityInspector extends React.Component<
         if (owner !== undefined) {
           return (
             <ReferenceValue
-              label={`${owner.owner.length > 0 ? owner.owner : '(unnamed)'} (${owner.type})`}
+              label={`${owner.owner.length > 0 ? owner.owner : '(unnamed)'} (${
+                owner.type
+              })`}
               fileId={ref.fileId}
               navigateFileId={owner.ownerFileId}
               onNavigate={this.props.onNavigate}

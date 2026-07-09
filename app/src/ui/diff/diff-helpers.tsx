@@ -9,7 +9,12 @@ import {
   CommittedFileChange,
 } from '../../models/status'
 import { DiffHunk, DiffHunkExpansionType } from '../../models/diff/raw-diff'
-import { DiffLineType, ILargeTextDiff, ITextDiff, IUnityDiff } from '../../models/diff'
+import {
+  DiffLineType,
+  ILargeTextDiff,
+  ITextDiff,
+  IUnityDiff,
+} from '../../models/diff'
 
 /**
  * DiffRowType defines the different types of

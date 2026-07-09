@@ -92,10 +92,7 @@ const gitShow = (repo: string, ref: string, path: string): string | null => {
   return result.status === 0 ? result.stdout : null
 }
 
-const parseSide = (
-  present: boolean,
-  content: string
-): IParsedAssetSide => {
+const parseSide = (present: boolean, content: string): IParsedAssetSide => {
   if (!present) {
     return {
       present: false,
@@ -124,7 +121,10 @@ const guidsOfPrefabInstances = (
   for (const d of docs) {
     if (d.classId !== 1001) continue
     const s = d.properties.find(p => p.key === 'm_SourcePrefab')
-    if (s?.value?.kind === 'reference' && s.value.reference.guid !== undefined) {
+    if (
+      s?.value?.kind === 'reference' &&
+      s.value.reference.guid !== undefined
+    ) {
       out.push(s.value.reference.guid)
     }
   }
@@ -257,7 +257,11 @@ let commitsSkipped = 0
 
 const run = async () => {
   const t0 = Date.now()
-  console.log(`stress: repo=${args.repo}${args.limit !== null ? ` limit=${args.limit}` : ''}${args.from !== null ? ` from=${args.from}` : ''}`)
+  console.log(
+    `stress: repo=${args.repo}${
+      args.limit !== null ? ` limit=${args.limit}` : ''
+    }${args.from !== null ? ` from=${args.from}` : ''}`
+  )
 
   const metaIndex = await getWorkingTreeMetaIndex(args.repo)
   const pathByGuid = metaIndex.toPathByGuid()
@@ -315,16 +319,12 @@ const run = async () => {
         const before = parseSide(beforeContent !== null, beforeContent ?? '')
         const after = parseSide(afterContent !== null, afterContent ?? '')
 
-        const sources = buildSourceMap(
-          args.repo,
-          pathByGuid,
-          [...before.documents, ...after.documents]
-        )
-        const { result } = computeUnityAssetDiff(
-          before,
-          after,
-          sources,
-          g => pathByGuid.get(g)
+        const sources = buildSourceMap(args.repo, pathByGuid, [
+          ...before.documents,
+          ...after.documents,
+        ])
+        const { result } = computeUnityAssetDiff(before, after, sources, g =>
+          pathByGuid.get(g)
         )
         if (args.verbose) {
           const changedNodes = countChangedNodes(result.roots)
@@ -332,7 +332,9 @@ const run = async () => {
             p => p.status !== 'unchanged'
           ).length
           console.log(
-            `  ${commit.slice(0, 7)} ${file}: status=${result.status} nodes.changed=${changedNodes} prefabs.changed=${changedPrefabs}`
+            `  ${commit.slice(0, 7)} ${file}: status=${
+              result.status
+            } nodes.changed=${changedNodes} prefabs.changed=${changedPrefabs}`
           )
         }
       } catch (e: unknown) {
@@ -345,7 +347,9 @@ const run = async () => {
           stack: err.stack ?? '',
         })
         console.error(
-          `\n[FAIL] commit ${commit.slice(0, 12)} file ${file}\n  ${err.message}`
+          `\n[FAIL] commit ${commit.slice(0, 12)} file ${file}\n  ${
+            err.message
+          }`
         )
       }
     }
@@ -354,7 +358,9 @@ const run = async () => {
     if ((i + 1) % 25 === 0) {
       const elapsed = Math.round((Date.now() - t0) / 1000)
       console.log(
-        `  ...${i + 1}/${list.length} commits (${filesProcessed} files, ${failures.length} failures, ${elapsed}s)`
+        `  ...${i + 1}/${list.length} commits (${filesProcessed} files, ${
+          failures.length
+        } failures, ${elapsed}s)`
       )
     }
   }

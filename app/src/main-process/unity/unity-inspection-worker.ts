@@ -102,10 +102,7 @@ const cacheTtlMs = 60_000
 
 interface IRepoSourceCache {
   readonly builtAt: number
-  readonly entries: Map<
-    string,
-    ReadonlyArray<IUnitySerializedDocument> | null
-  >
+  readonly entries: Map<string, ReadonlyArray<IUnitySerializedDocument> | null>
 }
 
 // Parsed source-prefab documents per repository (null = resolved-but-absent, so

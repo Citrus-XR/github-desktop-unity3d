@@ -69,7 +69,9 @@ export class CollapsibleValue extends React.Component<
         <div
           ref={this.ref}
           className="unity-collapsible-value-body"
-          style={collapsed ? { maxHeight: capPx, overflow: 'hidden' } : undefined}
+          style={
+            collapsed ? { maxHeight: capPx, overflow: 'hidden' } : undefined
+          }
         >
           {this.props.children}
         </div>

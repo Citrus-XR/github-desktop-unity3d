@@ -609,9 +609,7 @@ app.on('ready', () => {
    * Diff a Unity text-serialized asset across two Git refs and return its
    * semantic model (merged hierarchy + per-document property diffs).
    */
-  ipcMain.handle('unity-semantic-diff', (_, request) =>
-    diffUnityAsset(request)
-  )
+  ipcMain.handle('unity-semantic-diff', (_, request) => diffUnityAsset(request))
 
   /**
    * Fetch the property diffs for specific documents (a selected node and its

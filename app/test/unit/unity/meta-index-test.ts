@@ -42,7 +42,10 @@ describe('MetaIndex', () => {
       { metaPath: 'Assets/Scripts/Player.cs.meta', content: scriptMeta },
     ])
     assert.equal(index.size, 1)
-    assert.equal(index.pathForGuid('abcdef1234567890abcdef1234567890'), 'Assets/Scripts/Player.cs')
+    assert.equal(
+      index.pathForGuid('abcdef1234567890abcdef1234567890'),
+      'Assets/Scripts/Player.cs'
+    )
     const record = index.getByPath('Assets/Scripts/Player.cs')
     assert.equal(record?.guid, 'abcdef1234567890abcdef1234567890')
     assert.equal(record?.importerType, 'MonoImporter')
@@ -50,7 +53,10 @@ describe('MetaIndex', () => {
 
   it('resolves paths case-insensitively as a fallback', () => {
     const index = buildMetaIndex([
-      { metaPath: 'Assets/Art/Hero.png.meta', content: 'guid: 11112222333344445555666677778888\n' },
+      {
+        metaPath: 'Assets/Art/Hero.png.meta',
+        content: 'guid: 11112222333344445555666677778888\n',
+      },
     ])
     assert.equal(
       index.getByPath('assets/art/hero.png')?.guid,
