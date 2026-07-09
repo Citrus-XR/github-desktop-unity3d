@@ -8,29 +8,16 @@
  * later becomes (or stops being) a Unity project is picked up on subsequent
  * requests.
  *
- * `.meta` files are intentionally excluded: they carry no `!u!` documents and
- * serve the GUID index, not the inspector, so they remain plain text diffs.
+ * The extension test lives in `./unity-asset-path` so that scripts can reuse
+ * it without pulling `Repository` and its transitive renderer graph into
+ * `tsc -P script/tsconfig.json`.
  */
 
-import { extname } from 'path'
 import { Repository } from '../../models/repository'
 import { isUnityProject } from './project-detection'
+import { isUnityAssetPath } from './unity-asset-path'
 
-const unityAssetExtensions: ReadonlySet<string> = new Set([
-  '.unity',
-  '.prefab',
-  '.asset',
-  '.mat',
-  '.anim',
-  '.controller',
-  '.overridecontroller',
-  '.rendertexture',
-  '.physicsmaterial',
-])
-
-/** Whether a repository-relative path is a Unity text-serialized asset. */
-export const isUnityAssetPath = (path: string): boolean =>
-  unityAssetExtensions.has(extname(path).toLowerCase())
+export { isUnityAssetPath }
 
 interface IProjectCacheEntry {
   readonly promise: Promise<boolean>

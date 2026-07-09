@@ -28,7 +28,7 @@ import {
   parseModelNameTable,
 } from '../app/src/lib/unity/model-prefab'
 import { IUnitySerializedDocument } from '../app/src/models/unity/serialized-asset'
-import { isUnityAssetPath } from '../app/src/lib/unity/unity-diff-gate'
+import { isUnityAssetPath } from '../app/src/lib/unity/unity-asset-path'
 import { isErrnoException } from '../app/src/lib/errno-exception'
 
 interface IArgs {
