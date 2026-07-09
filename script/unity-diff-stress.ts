@@ -119,7 +119,9 @@ const guidsOfPrefabInstances = (
 ): ReadonlyArray<string> => {
   const out: string[] = []
   for (const d of docs) {
-    if (d.classId !== 1001) continue
+    if (d.classId !== 1001) {
+      continue
+    }
     const s = d.properties.find(p => p.key === 'm_SourcePrefab')
     if (
       s?.value?.kind === 'reference' &&
@@ -223,7 +225,9 @@ const buildSourceMap = (
   while (frontier.length > 0) {
     const next: string[] = []
     for (const guid of frontier) {
-      if (seen.has(guid)) continue
+      if (seen.has(guid)) {
+        continue
+      }
       seen.add(guid)
       const outcome = resolveSource(repo, pathByGuid, guid)
       if (outcome.error !== undefined) {
@@ -231,10 +235,14 @@ const buildSourceMap = (
         // it to the current commit + file the harness is processing.
         throw outcome.error
       }
-      if (outcome.docs === null) continue
+      if (outcome.docs === null) {
+        continue
+      }
       map.set(guid, outcome.docs)
       for (const g of guidsOfPrefabInstances(outcome.docs)) {
-        if (!seen.has(g)) next.push(g)
+        if (!seen.has(g)) {
+          next.push(g)
+        }
       }
     }
     frontier = next
@@ -388,7 +396,9 @@ const run = async () => {
 const countChangedNodes = (nodes: ReadonlyArray<any>): number => {
   let n = 0
   for (const node of nodes) {
-    if (node.status !== 'unchanged') n++
+    if (node.status !== 'unchanged') {
+      n++
+    }
     n += countChangedNodes(node.children)
   }
   return n

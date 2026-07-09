@@ -381,7 +381,7 @@ export class UnityInspector extends React.Component<
       toggleKey !== undefined
         ? doc.properties.find(p => p.key === toggleKey)
         : undefined
-    const scriptName = this.componentScriptName(typeName, doc, result)
+    const scriptName = this.resolveMonoScriptFilename(typeName, doc, result)
 
     // Fields consumed by the header (the toggle becomes a checkbox, the script
     // becomes the title) never appear in the body. Plumbing fields are handled
@@ -701,7 +701,7 @@ export class UnityInspector extends React.Component<
   }
 
   /** The MonoBehaviour script's file name (resolved via GUID), or null. */
-  private componentScriptName(
+  private resolveMonoScriptFilename(
     typeName: string,
     doc: IUnityDocumentDiff,
     result: IUnitySemanticDiffResult
