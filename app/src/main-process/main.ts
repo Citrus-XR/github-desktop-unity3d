@@ -106,18 +106,7 @@ function getExtraErrorContext(): Record<string, string> {
 /** Extra argument for the protocol launcher on Windows */
 const protocolLauncherArg = '--protocol-launcher'
 
-const possibleProtocols = new Set(['x-github-client'])
-if (__DEV_SECRETS__) {
-  possibleProtocols.add('x-github-desktop-dev-auth')
-} else {
-  possibleProtocols.add('x-github-desktop-auth')
-}
-// Also support Desktop Classic's protocols.
-if (__DARWIN__) {
-  possibleProtocols.add('github-mac')
-} else if (__WIN32__) {
-  possibleProtocols.add('github-windows')
-}
+const possibleProtocols = new Set(['x-github-desktop-u'])
 
 // On Windows, in order to get notifications properly working for dev builds,
 // we'll want to set the right App User Model ID from production builds.
@@ -251,9 +240,9 @@ async function handleCommandLineArguments(argv: string[]) {
 
   if (__WIN32__ && args['protocol-launcher'] === true) {
     // On Windows we'll end up getting called with something like
-    // `--protocol-launcher --allow-file-access-from-files x-github-client://..`
+    // `--protocol-launcher --allow-file-access-from-files x-github-desktop-u://..`
     // which minimist naturally interprets as
-    // `--allow-file-access-from-files=x:/github-client`. This is due to
+    // `--allow-file-access-from-files=x:/github-desktop-u`. This is due to
     // Chromium's hot take on parsing command line arguments, see:
     // https://github.com/electron/electron/issues/20322#issuecomment-534137321
     // So while we could add '--allow-file...' as a boolean we can't know for

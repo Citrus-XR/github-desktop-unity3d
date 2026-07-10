@@ -2,8 +2,8 @@ import { getSHA } from './git-info'
 import { getUpdatesURL, getChannel } from '../script/dist-info'
 import { version, productName } from './package.json'
 
-const devClientId = '3a723b10ac5575cc5bb9'
-const devClientSecret = '22c34d87789a365981ed921352a7b9a8c3f69d54'
+const defaultClientId = 'Ov23liydI8z83FVytSAI'
+const defaultClientSecret = '5e428ea69d02cc1146e66d0bd15c7295db9f5e7b'
 
 const channel = getChannel()
 
@@ -13,9 +13,11 @@ export function getReplacements() {
   const isDevBuild = channel === 'development'
 
   return {
-    __OAUTH_CLIENT_ID__: s(process.env.DESKTOP_OAUTH_CLIENT_ID || devClientId),
+    __OAUTH_CLIENT_ID__: s(
+      process.env.DESKTOP_OAUTH_CLIENT_ID || defaultClientId
+    ),
     __OAUTH_SECRET__: s(
-      process.env.DESKTOP_OAUTH_CLIENT_SECRET || devClientSecret
+      process.env.DESKTOP_OAUTH_CLIENT_SECRET || defaultClientSecret
     ),
     __DARWIN__: process.platform === 'darwin',
     __WIN32__: process.platform === 'win32',

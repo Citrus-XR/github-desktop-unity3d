@@ -9,5 +9,5 @@ Terminal=false
 StartupNotify=true
 StartupWMClass=GitHub Desktop U
 Categories=Development;GTK;
-MimeType=x-scheme-handler/x-github-client;x-scheme-handler/x-github-desktop-auth;x-scheme-handler/x-github-desktop-dev-auth;
+MimeType=x-scheme-handler/x-github-desktop-u;
 Keywords=git;github;version-control;
