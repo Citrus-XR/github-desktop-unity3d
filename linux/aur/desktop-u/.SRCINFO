@@ -19,7 +19,7 @@ pkgbase = desktop-u
 	optdepends = kwallet: OAuth/credential storage on KDE
 	optdepends = git: run git operations against your local repositories
 	provides = github-desktop
-	source = git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=e8c1666a94c41dd6bb9b3d663a09dd243ddeb9bc
+	source = git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=f4ff170ea7b3501a5e2ccf9668ab546b85b26e11
 	sha256sums = SKIP
 
 pkgname = desktop-u
