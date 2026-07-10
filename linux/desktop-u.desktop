@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=GitHub Desktop U
+GenericName=Git Repository Manager
+Comment=Simple collaboration from your desktop
+Exec=desktop-u %U
+Icon=desktop-u
+Terminal=false
+StartupNotify=true
+StartupWMClass=GitHub Desktop U
+Categories=Development;GTK;
+MimeType=x-scheme-handler/x-github-client;x-scheme-handler/x-github-desktop-auth;x-scheme-handler/x-github-desktop-dev-auth;
+Keywords=git;github;version-control;
