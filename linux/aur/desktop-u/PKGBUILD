@@ -27,7 +27,7 @@ makedepends=(
 )
 provides=('github-desktop')
 source=(
-  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=f4ff170ea7b3501a5e2ccf9668ab546b85b26e11"
+  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=3cce991fe507032568af89acaf2b569cf2a3e455"
 )
 sha256sums=('SKIP')
 
