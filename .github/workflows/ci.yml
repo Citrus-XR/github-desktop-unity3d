@@ -5,6 +5,16 @@ on:
     branches:
       - development
   pull_request:
+  workflow_dispatch:
+    inputs:
+      upload-artifacts:
+        description: 'Upload the setup exe/msi/nupkg/zip as run artifacts'
+        default: true
+        type: boolean
+      sign:
+        description: 'Code-sign the Windows build (needs Azure secrets set)'
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       repository:
