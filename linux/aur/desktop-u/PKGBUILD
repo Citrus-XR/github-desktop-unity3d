@@ -21,7 +21,6 @@ optdepends=(
 )
 makedepends=(
   'nodejs>=24'
-  'yarn'
   'git'
   'python'
 )
@@ -35,15 +34,16 @@ _srcdir="github-desktop-unity3d"
 
 prepare() {
   cd "$_srcdir"
-  # yarn's postinstall runs `tsc -P script/tsconfig.json` which pulls the
-  # renderer graph; both are safe under NODE_ENV=production. --frozen-lockfile
-  # keeps the local build reproducible against the checked-in yarn.lock.
-  yarn install --frozen-lockfile
+  # `npx yarn` avoids a system `yarn` makedep — Arch's nodejs already ships
+  # npx, and the fetched yarn is cached in $srcdir so repeated makepkg runs
+  # don't re-download it. --frozen-lockfile keeps the local build
+  # reproducible against the checked-in yarn.lock.
+  npx --yes yarn install --frozen-lockfile
 }
 
 build() {
   cd "$_srcdir"
-  yarn build:prod
+  npx --yes yarn build:prod
 }
 
 package() {

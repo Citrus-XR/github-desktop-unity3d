@@ -6,7 +6,6 @@ pkgbase = desktop-u
 	arch = x86_64
 	license = MIT
 	makedepends = nodejs>=24
-	makedepends = yarn
 	makedepends = git
 	makedepends = python
 	depends = gtk3
