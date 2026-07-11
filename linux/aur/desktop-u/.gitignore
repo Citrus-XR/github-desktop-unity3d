@@ -1,0 +1,7 @@
+src/
+pkg/
+github-desktop-unity3d/
+node-v*/
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+node-v*-linux-x64.tar.xz

@@ -19,30 +19,38 @@ optdepends=(
   'kwallet: OAuth/credential storage on KDE'
   'git: run git operations against your local repositories'
 )
+# Explicitly no `nodejs` makedep. Arch ships `nodejs` 26.x, whose stricter
+# stream handling silently truncates extract-zip@2.0.1 mid-extract during
+# electron's postinstall (produces an empty node_modules/electron/dist and
+# packaging then fails). The upstream .nvmrc pins 24.15.0; download that
+# tarball via makepkg's source array and use it locally for prepare()+build().
+_nodever=24.15.0
 makedepends=(
-  'nodejs>=24'
   'git'
   'python'
 )
 provides=('github-desktop')
 source=(
-  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=3cce991fe507032568af89acaf2b569cf2a3e455"
+  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=eaf7bb449ee573ede5ba6b844a977e3d4f3e96eb"
+  "https://nodejs.org/dist/v${_nodever}/node-v${_nodever}-linux-x64.tar.xz"
 )
-sha256sums=('SKIP')
+sha256sums=(
+  'SKIP'
+  '472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6'
+)
 
 _srcdir="github-desktop-unity3d"
+_nodedir="node-v${_nodever}-linux-x64"
 
 prepare() {
   cd "$_srcdir"
-  # `npx yarn` avoids a system `yarn` makedep — Arch's nodejs already ships
-  # npx, and the fetched yarn is cached in $srcdir so repeated makepkg runs
-  # don't re-download it. --frozen-lockfile keeps the local build
-  # reproducible against the checked-in yarn.lock.
+  export PATH="$srcdir/${_nodedir}/bin:$PATH"
   npx --yes yarn install --frozen-lockfile
 }
 
 build() {
   cd "$_srcdir"
+  export PATH="$srcdir/${_nodedir}/bin:$PATH"
   npx --yes yarn build:prod
 }
 

@@ -5,7 +5,6 @@ pkgbase = desktop-u
 	url = https://github.com/Citrus-XR/github-desktop-unity3d
 	arch = x86_64
 	license = MIT
-	makedepends = nodejs>=24
 	makedepends = git
 	makedepends = python
 	depends = gtk3
@@ -18,7 +17,9 @@ pkgbase = desktop-u
 	optdepends = kwallet: OAuth/credential storage on KDE
 	optdepends = git: run git operations against your local repositories
 	provides = github-desktop
-	source = git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=3cce991fe507032568af89acaf2b569cf2a3e455
+	source = git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=eaf7bb449ee573ede5ba6b844a977e3d4f3e96eb
+	source = https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz
 	sha256sums = SKIP
+	sha256sums = 472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6
 
 pkgname = desktop-u
