@@ -36,6 +36,7 @@ import {
   getBranches,
   getRebaseSnapshot,
   getRepositoryType,
+  listWorktrees,
 } from '../../lib/git'
 import { isGitOnPath } from '../../lib/is-git-on-path'
 import {
@@ -1023,6 +1024,28 @@ export class Dispatcher {
     await this.appStore
       ._switchWorktree(repository, worktree)
       .catch(e => this.postError(e))
+  }
+
+  /**
+   * Rename (move) a worktree to a new path and keep the worktree list in sync.
+   * If the worktree being renamed is the currently selected one, the repository
+   * is switched to its new path.
+   *
+   * Returns a value indicating whether the rename succeeded. On failure the
+   * error is surfaced to the user via `postError`.
+   */
+  public async moveWorktree(
+    repository: Repository,
+    worktreePath: string,
+    newPath: string
+  ): Promise<boolean> {
+    return this.appStore
+      ._moveWorktree(repository, worktreePath, newPath)
+      .then(() => true)
+      .catch(e => {
+        this.postError(e)
+        return false
+      })
   }
 
   /**
@@ -2051,9 +2074,26 @@ export class Dispatcher {
 
       if (existingRepository) {
         await this.selectRepository(existingRepository)
-      } else {
-        await this.showPopup({ type: PopupType.AddRepository, path })
+        return
       }
+
+      // Try to locate a repository that has a shared main worktree with the
+      // provided path so that we can switch to the worktree instead of adding
+      // a new repository.
+      const worktrees = await listWorktrees(path).catch(e => {
+        log.error('Could not list worktrees', e)
+        return []
+      })
+      const worktree = matchExistingRepository(worktrees, path)
+      const sharedCommonDirRepository = repositories.find(
+        r => matchExistingRepository(worktrees, r.path) !== undefined
+      )
+      if (worktree && sharedCommonDirRepository instanceof Repository) {
+        await this.switchWorktree(sharedCommonDirRepository, worktree)
+        return
+      }
+
+      await this.showPopup({ type: PopupType.AddRepository, path })
     }
   }
 

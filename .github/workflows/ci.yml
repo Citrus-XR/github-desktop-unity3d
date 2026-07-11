@@ -31,6 +31,12 @@ on:
         type: boolean
         default: true
         required: false
+      error-reporting-endpoint:
+        type: string
+        required: false
+      non-fatal-error-reporting-endpoint:
+        type: string
+        required: false
     secrets:
       AZURE_CODE_SIGNING_TENANT_ID:
       AZURE_CODE_SIGNING_CLIENT_ID:
@@ -44,6 +50,9 @@ on:
 
 env:
   NODE_VERSION: 24.15.0
+  DESKTOP_ERROR_REPORTING_ENDPOINT: ${{ inputs.error-reporting-endpoint }}
+  DESKTOP_NON_FATAL_ERROR_REPORTING_ENDPOINT:
+    ${{ inputs.non-fatal-error-reporting-endpoint }}
 
 jobs:
   lint:
@@ -153,6 +162,7 @@ jobs:
             dist/GitHubDesktopUSetup-${{matrix.arch}}.exe
             dist/GitHubDesktopUSetup-${{matrix.arch}}.msi
             dist/bundle-size.json
+            dist/bundle-hash.json
           if-no-files-found: error
   e2e-smoke:
     name: E2E Smoke ${{ matrix.friendlyName }} ${{ matrix.arch }}

@@ -53,12 +53,26 @@ export function parseWorktreePorcelainOutput(
 }
 
 export async function listWorktrees(
-  repository: Repository
+  repositoryOrPath: Repository | string
 ): Promise<ReadonlyArray<WorktreeEntry>> {
   const result = await git(
     ['worktree', 'list', '--porcelain', '-z'],
-    repository.path,
+    typeof repositoryOrPath === 'string'
+      ? repositoryOrPath
+      : repositoryOrPath.path,
     'listWorktrees'
+  )
+
+  return parseWorktreePorcelainOutput(result.stdout)
+}
+
+export async function listWorktreesFromGitDir(
+  gitDir: string
+): Promise<ReadonlyArray<WorktreeEntry>> {
+  const result = await git(
+    ['--git-dir', gitDir, 'worktree', 'list', '--porcelain', '-z'],
+    gitDir,
+    'listWorktreesFromGitDir'
   )
 
   return parseWorktreePorcelainOutput(result.stdout)
