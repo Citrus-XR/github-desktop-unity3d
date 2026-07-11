@@ -78,6 +78,14 @@ findYarnVersion(path => {
     process.exit(result.status || 1)
   }
 
+  // Playwright ffmpeg is only used by the E2E test jobs (yarn test:e2e:*).
+  // Skip when the caller opts out — the download hangs indefinitely on
+  // networks that can't reach playwright.download.prss.microsoft.com, which
+  // would strand `makepkg -si` from the AUR PKGBUILD.
+  if (process.env.DESKTOP_SKIP_PLAYWRIGHT === '1') {
+    return
+  }
+
   // Capture output here so CI failures include the Playwright-specific error.
   result = spawnSync(
     process.execPath,
