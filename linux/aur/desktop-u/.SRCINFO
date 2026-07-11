@@ -16,7 +16,6 @@ pkgbase = desktop-u
 	optdepends = gnome-keyring: OAuth/credential storage on GNOME
 	optdepends = kwallet: OAuth/credential storage on KDE
 	optdepends = git: run git operations against your local repositories
-	provides = github-desktop
 	source = git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=df93c6452e1d47bce6d78b54e812743ea69e451c
 	source = https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz
 	sha256sums = SKIP
