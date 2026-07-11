@@ -233,42 +233,36 @@ async function handleCommandLineArguments(argv: string[]) {
     boolean: ['protocol-launcher'],
   })
 
-  // Desktop registers it's protocol handler callback on Windows as
-  // `[executable path] --protocol-launcher "%1"`. Note that extra command
-  // line arguments might be added by Chromium
-  // (https://electronjs.org/docs/api/app#event-second-instance).
+  // Look for one of our custom URL schemes in the raw arguments. Any
+  // platform except macOS delivers callback URLs via argv:
+  //   Linux: `.desktop` file's `Exec=... %U` appends the URL directly.
+  //   Windows: Squirrel invokes us with `--protocol-launcher <url>`, and
+  //     Chromium may interleave `--allow-file-access-from-files ...` which
+  //     minimist would parse as `--allow-file-access-from-files=x:/...` — so
+  //     scan all args instead of trusting positional ordering.
+  //   macOS: doesn't hit this path (uses the `open-url` event).
+  const prefixes = Array.from(possibleProtocols, p => `${p}://`)
+  const matchingUrl = argv.find(arg => {
+    if (prefixes.some(p => arg.startsWith(p))) {
+      try {
+        new URL(arg)
+        return true
+      } catch (e) {
+        log.error(`Unable to parse argument as URL: ${arg}`)
+      }
+    }
+    return false
+  })
+
+  if (matchingUrl) {
+    handleAppURL(matchingUrl)
+    return
+  }
 
   if (__WIN32__ && args['protocol-launcher'] === true) {
-    // On Windows we'll end up getting called with something like
-    // `--protocol-launcher --allow-file-access-from-files x-github-desktop-u://..`
-    // which minimist naturally interprets as
-    // `--allow-file-access-from-files=x:/github-desktop-u`. This is due to
-    // Chromium's hot take on parsing command line arguments, see:
-    // https://github.com/electron/electron/issues/20322#issuecomment-534137321
-    // So while we could add '--allow-file...' as a boolean we can't know for
-    // sure that Chromium won't add more switches later on which is why we have
-    // to resort to looking through all arguments looking for something that
-    // appears to be an app url.
-    const prefixes = Array.from(possibleProtocols, p => `${p}://`)
-    const matchingUrl = argv.find(arg => {
-      if (prefixes.some(p => arg.startsWith(p))) {
-        try {
-          new URL(arg)
-          return true
-        } catch (e) {
-          log.error(`Unable to parse argument as URL: ${arg}`)
-        }
-      }
-      return false
-    })
-
-    if (matchingUrl) {
-      handleAppURL(matchingUrl)
-    } else {
-      log.error(`Encountered --protocol-launcher without app url`)
-    }
-    // If --protocol-launcher is present we always want to bail and not
-    // risk a smuggled cli switch
+    log.error(`Encountered --protocol-launcher without app url`)
+    // Bail so we don't act on any smuggled cli switches Chromium may have
+    // appended alongside the protocol-launcher sentinel.
     return
   }
 
