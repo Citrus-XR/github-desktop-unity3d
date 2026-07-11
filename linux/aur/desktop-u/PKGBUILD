@@ -66,6 +66,13 @@ package() {
   install -d "$pkgdir/opt/desktop-u"
   cp -a "$appdir/." "$pkgdir/opt/desktop-u/"
 
+  # electron-packager sometimes emits its output directory as 0700; `cp -a`
+  # preserves that, and pacman then installs `/opt/desktop-u/` unreadable to
+  # non-root, so the /usr/bin/desktop-u shim exec's a path the user can't
+  # traverse ("Permission denied"). Force 0755 on the directory itself; files
+  # inside keep their modes (including chrome-sandbox 4755 below).
+  chmod 755 "$pkgdir/opt/desktop-u"
+
   # Electron's chrome-sandbox must be setuid-root or the renderer refuses to
   # start on Linux (unless launched with --no-sandbox). fakeroot preserves
   # the 4755 mode we set here into the produced pkg.tar.zst.
