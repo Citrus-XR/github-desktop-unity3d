@@ -17,3 +17,6 @@ gemoji
 *.md
 app/static/logos/prod/**/*.json
 app/static/logos/dev/**/*.json
+linux/aur/*/pkg
+linux/aur/*/src
+linux/aur/*/node-v*

@@ -31,7 +31,7 @@ makedepends=(
 )
 provides=('github-desktop')
 source=(
-  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=eaf7bb449ee573ede5ba6b844a977e3d4f3e96eb"
+  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=df93c6452e1d47bce6d78b54e812743ea69e451c"
   "https://nodejs.org/dist/v${_nodever}/node-v${_nodever}-linux-x64.tar.xz"
 )
 sha256sums=(
@@ -45,12 +45,18 @@ _nodedir="node-v${_nodever}-linux-x64"
 prepare() {
   cd "$_srcdir"
   export PATH="$srcdir/${_nodedir}/bin:$PATH"
+  # Playwright ffmpeg is only needed by the E2E test suite (yarn test:e2e:*),
+  # and its download hangs indefinitely when the Playwright CDN is unreachable
+  # (which strands makepkg with no way to know why). We're building the desktop
+  # app, not running tests, so skip it entirely.
+  export DESKTOP_SKIP_PLAYWRIGHT=1
   npx --yes yarn install --frozen-lockfile
 }
 
 build() {
   cd "$_srcdir"
   export PATH="$srcdir/${_nodedir}/bin:$PATH"
+  export DESKTOP_SKIP_PLAYWRIGHT=1
   npx --yes yarn build:prod
 }
 
