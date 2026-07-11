@@ -18,3 +18,21 @@ This is a desktop git manager application optimized for Unity!
     alt="A screenshot of the GitHub Desktop application showing changes being viewed and committed with two attributed co-authors"
   />
 </picture>
+
+## Install
+
+- **Windows / macOS** — download a `GitHubDesktopUSetup-x64.{exe,msi}`
+  or `GitHub Desktop U-<arch>.zip` artifact from a
+  [CI run](https://github.com/Citrus-XR/github-desktop-unity3d/actions/workflows/ci.yml)
+  triggered via **Run workflow** (`upload-artifacts=true` is the
+  default). Signed builds require Azure code-signing secrets that
+  this fork's CI doesn't have — the Windows installers will trip
+  SmartScreen ("unknown publisher"); click **More info → Run anyway**.
+- **Linux (Arch/AUR)** — see [`linux/README.md`](linux/README.md).
+  Short form: `cd linux/aur/desktop-u && makepkg -si`.
+
+It coexists with upstream GitHub Desktop and with shiftkey's Linux
+`github-desktop-bin` — installs to distinct paths, uses its own
+`x-github-desktop-u://` URL scheme, and its own OAuth app so
+authorizing one doesn't step on the other.
+
