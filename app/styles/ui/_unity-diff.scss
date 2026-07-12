@@ -349,6 +349,14 @@
   }
 }
 
+// The synthesized "model default" placeholder rendered when we don't know the
+// FBX-driven value for a Transform axis, MeshRenderer flag, etc. Rendered in
+// italic muted text so users see immediately that it's not a real value.
+.unity-model-default {
+  font-style: italic;
+  opacity: 0.6;
+}
+
 // GameObject Tag and Layer sit side by side, each its own labeled field.
 .unity-go-tag-layer {
   display: flex;

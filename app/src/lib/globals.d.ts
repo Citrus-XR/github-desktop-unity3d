@@ -181,3 +181,14 @@ type Length<T extends any[]> = T extends { length: infer L } ? L : never
 
 /** Obtain the the number of parameters of a function type */
 type ParameterCount<T extends (...args: any) => any> = Length<Parameters<T>>
+
+declare module 'xxhashjs' {
+  interface UINT {
+    toString(radix?: number): string
+  }
+  const XXH: {
+    h32: (input: string | ArrayBuffer, seed: number) => UINT
+    h64: (input: string | ArrayBuffer, seed: number) => UINT
+  }
+  export default XXH
+}

@@ -36,3 +36,19 @@ It coexists with upstream GitHub Desktop and with shiftkey's Linux
 `x-github-desktop-u://` URL scheme, and its own OAuth app so
 authorizing one doesn't step on the other.
 
+## Unity Semantic Diff notes
+
+Prefabs and scenes often reference objects *inside* imported model
+files (FBX, OBJ, etc.), which Git can't see. To resolve those refs
+this fork parses the raw FBX with
+[`fbx-parser`](https://github.com/picode7/fbx-parser) (MIT) — for
+the object hierarchy alone, no geometry — and reconstructs the
+fileIDs Unity 2019+ generates for each object by hashing its
+hierarchy path plus class name with
+[`xxhashjs`](https://github.com/pierrec/js-xxhash) (MIT, Pierre
+Curto). The exact algorithm was cross-validated against
+[V-Sekai's `unidot_importer`](https://github.com/V-Sekai/unidot_importer),
+whose Godot port re-derives the same ids for `.unitypackage`
+conversion. Both dependencies stay pure JS — no native builds — so
+the Electron packaging story is unaffected.
+

@@ -15,6 +15,7 @@ import {
   IUnityGameObjectDiffNode,
   UnityChangeStatus,
 } from '../../../models/unity/semantic-diff'
+import { MODEL_DEFAULT_MARKER } from '../../../lib/unity/model-prefab'
 
 export { basenameWithoutExtension } from '../../../lib/unity/asset-diff'
 
@@ -67,6 +68,21 @@ export const scalarSide = (
   value: UnityPropertyValue | null
 ): string | undefined =>
   value !== null && value.kind === 'scalar' ? value.value : undefined
+
+/** Human-readable label the Inspector shows in place of the raw model-default sentinel. */
+export const MODEL_DEFAULT_LABEL = 'Model default'
+
+/** Whether a raw scalar string is the model-default sentinel emitted for synthesized objects. */
+export const isModelDefault = (value: string | undefined): boolean =>
+  value === MODEL_DEFAULT_MARKER
+
+/**
+ * Format one side's scalar for display: translates the model-default sentinel
+ * to its user-facing label, passes everything else through untouched. Use this
+ * anywhere a synthesized value can flow into user-facing text.
+ */
+export const displayScalar = (value: string | undefined): string =>
+  isModelDefault(value) ? MODEL_DEFAULT_LABEL : value ?? ''
 
 /** The field whose value drives a component's header checkbox, if any. */
 export const toggleFieldFor = (

@@ -31,6 +31,7 @@ import {
   isModelPath,
   parseModelNameTable,
 } from '../../lib/unity/model-prefab'
+import { parseFbxHierarchy } from '../../lib/unity/fbx-hierarchy'
 import {
   IUnityDocumentDiff,
   IUnitySemanticDiffResult,
@@ -216,9 +217,18 @@ const resolveSourceDocs = async (
   try {
     if (isModelPath(path)) {
       const meta = await readFile(join(repoPath, `${path}.meta`), 'utf8')
+      // Read the model file itself when it is on disk (typical for FBX in the
+      // working tree) so the reconstructed Transforms carry the real
+      // parent/child nesting. Non-FBX model formats and any read failure fall
+      // through to the flat, meta-only reconstruction.
+      const fbxHierarchy =
+        extname(path).toLowerCase() === '.fbx'
+          ? await tryReadFbxHierarchy(join(repoPath, path))
+          : undefined
       return buildModelDocuments(
         parseModelNameTable(meta),
-        basename(path, extname(path))
+        basename(path, extname(path)),
+        fbxHierarchy
       )
     }
     const content = await readFile(join(repoPath, path), 'utf8')
@@ -232,6 +242,27 @@ const resolveSourceDocs = async (
       return null
     }
     throw e
+  }
+}
+
+const tryReadFbxHierarchy = async (fbxPath: string) => {
+  try {
+    const bytes = await readFile(fbxPath)
+    return parseFbxHierarchy(bytes)
+  } catch (e) {
+    // A missing FBX (LFS pointer, sparse checkout, ENOENT) or a parser hiccup
+    // on an unusual export (unsupported FBX version, damaged stream) shouldn't
+    // fail the diff — fall back to the flat, meta-only layout. stderr is fine
+    // here: the worker has no logger and the main process captures its output.
+    if (isErrnoException(e) && e.code === 'ENOENT') {
+      return undefined
+    }
+    process.stderr.write(
+      `Unity inspection: FBX hierarchy parse failed for ${fbxPath}: ${
+        e instanceof Error ? e.message : String(e)
+      }\n`
+    )
+    return undefined
   }
 }
 

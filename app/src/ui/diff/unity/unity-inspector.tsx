@@ -41,6 +41,8 @@ import {
   isVectorLikeMap,
   resolveLayerName,
   scalarSide,
+  displayScalar,
+  isModelDefault,
   schemaFor,
   statusClass,
   toggleFieldFor,
@@ -1413,27 +1415,44 @@ export class UnityInspector extends React.Component<
   private renderScalarField(
     label: string,
     prop: IUnityPropertyDiff | undefined,
-    mapValue: (s: string | undefined) => string = s => s ?? ''
+    mapValue: (s: string | undefined) => string = s => displayScalar(s)
   ) {
     if (prop === undefined) {
       return null
     }
+    const modelDefaultClass = (raw: string | undefined) =>
+      isModelDefault(raw) ? ' unity-model-default' : ''
     return (
       <div className={`unity-property ${statusClass(prop.status)}`}>
         <span className="unity-property-key">{label}</span>
         <span className="unity-property-value">
           {prop.status === 'modified' ? (
             <>
-              <span className="unity-value-before">
+              <span
+                className={`unity-value-before${modelDefaultClass(
+                  scalarSide(prop.before)
+                )}`}
+              >
                 {mapValue(scalarSide(prop.before))}
               </span>
               {' → '}
-              <span className="unity-value-after">
+              <span
+                className={`unity-value-after${modelDefaultClass(
+                  scalarSide(prop.after)
+                )}`}
+              >
                 {mapValue(scalarSide(prop.after))}
               </span>
             </>
           ) : (
-            mapValue(scalarSide(prop.after ?? prop.before))
+            (() => {
+              const raw = scalarSide(prop.after ?? prop.before)
+              return (
+                <span className={modelDefaultClass(raw).trim()}>
+                  {mapValue(raw)}
+                </span>
+              )
+            })()
           )}
         </span>
       </div>
@@ -1463,22 +1482,38 @@ export class UnityInspector extends React.Component<
               before.has(k) &&
               after.has(k) &&
               b !== a
+            const shown = a ?? b
+            const modelDefaultClass = isModelDefault(shown)
+              ? ' unity-model-default'
+              : ''
             return (
               <span
                 key={k}
                 className={`unity-axis ${
                   changed ? 'unity-status-modified' : ''
-                }`}
+                }${modelDefaultClass}`}
               >
                 <span className="unity-axis-label">{k.toUpperCase()}</span>
                 {changed ? (
                   <>
-                    <span className="unity-value-before">{b}</span>
+                    <span
+                      className={`unity-value-before${
+                        isModelDefault(b) ? ' unity-model-default' : ''
+                      }`}
+                    >
+                      {displayScalar(b)}
+                    </span>
                     {' → '}
-                    <span className="unity-value-after">{a}</span>
+                    <span
+                      className={`unity-value-after${
+                        isModelDefault(a) ? ' unity-model-default' : ''
+                      }`}
+                    >
+                      {displayScalar(a)}
+                    </span>
                   </>
                 ) : (
-                  a ?? b ?? ''
+                  displayScalar(shown)
                 )}
               </span>
             )
