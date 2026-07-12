@@ -27,6 +27,13 @@ interface IDiffHeaderProps {
   readonly showUnityAsText?: boolean
   readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
 
+  /**
+   * Whether Unity's floating-point re-serialization noise is filtered from the
+   * override list in the semantic Inspector. Default `true`.
+   */
+  readonly hideUnityFloatDrift?: boolean
+  readonly onHideUnityFloatDriftChanged?: (hide: boolean) => void
+
   /** Called when the user opens the diff options popover */
   readonly onDiffOptionsOpened: () => void
 }
@@ -61,6 +68,10 @@ export class DiffHeader extends React.Component<IDiffHeaderProps, {}> {
       this.props.diff?.kind === DiffType.Unity
         ? this.props.showUnityAsText
         : undefined
+    const hideUnityFloatDrift =
+      this.props.diff?.kind === DiffType.Unity
+        ? this.props.hideUnityFloatDrift
+        : undefined
 
     return (
       <DiffOptions
@@ -73,6 +84,8 @@ export class DiffHeader extends React.Component<IDiffHeaderProps, {}> {
         showSideBySideDiff={this.props.showSideBySideDiff}
         showUnityAsText={showUnityAsText}
         onShowUnityAsTextChanged={this.props.onShowUnityAsTextChanged}
+        hideUnityFloatDrift={hideUnityFloatDrift}
+        onHideUnityFloatDriftChanged={this.props.onHideUnityFloatDriftChanged}
         onDiffOptionsOpened={this.props.onDiffOptionsOpened}
       />
     )

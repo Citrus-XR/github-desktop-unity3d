@@ -5,12 +5,20 @@
  * their fileIDs into the instance's id space (Unity derives an instance object
  * id by XOR-ing the PrefabInstance id with the source object id), reparent the
  * instance root via `m_TransformParent`, apply structural overrides (renames,
- * removed objects), and recurse for nested prefabs.
+ * removed objects), splice added components/GameObjects, and recurse for
+ * nested prefabs.
  *
- * Value-level overrides (e.g. `m_LocalPosition.x`) are intentionally NOT applied
- * to the cloned properties — those changes are surfaced separately by the
- * prefab override diff. Expansion here exists to recover structure and names so
- * the hierarchy nests correctly instead of dropping instance content.
+ * Value-level overrides (`m_LocalPosition.x`, `m_Materials.Array.data[0]`,
+ * `objectReference:` swaps, etc.) are also baked into the cloned properties
+ * so the merged per-side documents already reflect Unity's effective state.
+ * A change like "remove one prefab-override entry" then surfaces as an
+ * ordinary property diff (override value → source default) instead of as a
+ * dangling "removed override" row that the reader has to mentally re-apply.
+ *
+ * Overrides whose target or property path do not resolve in the expanded
+ * namespace are absent from the `appliedOverrides` out set, so the enricher
+ * in `asset-diff` can tell them apart from the applied ones and the
+ * Inspector still surfaces them under an "Unresolved" bucket.
  */
 
 import {
@@ -30,7 +38,6 @@ export type SourcePrefabResolver = (
 export type SourceNameResolver = (guid: string) => string | undefined
 
 const prefabInstanceClassId = 1001
-const maxExpansionDepth = 8
 const signMask = 0x7fffffffffffffffn
 
 // Sentinel XOR'd into a placeholder Transform's id to derive a synthesized
@@ -164,10 +171,173 @@ const setProperty = (
   return replaced ? next : [...next, { key, value }]
 }
 
+/** Typed override value: a scalar string or a resolved object reference. */
+type UnityOverrideValue =
+  | { readonly kind: 'scalar'; readonly value: string }
+  | { readonly kind: 'reference'; readonly reference: IUnityObjectReference }
+
+/**
+ * Property path segment. Unity paths mix keys (`.m_LocalPosition`), array
+ * indexing (`[0]`), and a special `.size` at the tail of `Array.size`
+ * expressions. The `Array` and `data` tokens Unity inserts around array
+ * indexing are stripped by the parser — our value tree exposes sequences
+ * directly, without those wrapper layers.
+ */
+type PathSegment =
+  | { readonly kind: 'key'; readonly key: string }
+  | { readonly kind: 'index'; readonly index: number }
+  | { readonly kind: 'size' }
+
+/** Tokens are either bare identifiers or `[digits]` bracket groups. */
+const pathTokenRegex = /([A-Za-z_][\w]*)|\[(\d+)\]/g
+
+const parsePropertyPath = (path: string): ReadonlyArray<PathSegment> => {
+  const segments = new Array<PathSegment>()
+  pathTokenRegex.lastIndex = 0
+  let match: RegExpExecArray | null
+  let insideArray = false
+  while ((match = pathTokenRegex.exec(path)) !== null) {
+    const identifier = match[1]
+    if (identifier !== undefined) {
+      if (identifier === 'Array') {
+        insideArray = true
+        continue
+      }
+      if (identifier === 'data' && insideArray) {
+        // `.Array.data[N]` — the `data` layer is transparent in our tree.
+        continue
+      }
+      if (identifier === 'size' && insideArray) {
+        segments.push({ kind: 'size' })
+        insideArray = false
+        continue
+      }
+      insideArray = false
+      segments.push({ kind: 'key', key: identifier })
+    } else {
+      segments.push({ kind: 'index', index: parseInt(match[2], 10) })
+      insideArray = false
+    }
+  }
+  return segments
+}
+
+/** Build a fresh value subtree from the tail of a path (used when a key or */
+/** index is missing from the base clone and we still want to bake it in). */
+const buildValueForPath = (
+  segments: ReadonlyArray<PathSegment>,
+  value: UnityOverrideValue
+): UnityPropertyValue => {
+  if (segments.length === 0) {
+    return value
+  }
+  const seg = segments[0]
+  const rest = segments.slice(1)
+  if (seg.kind === 'key') {
+    return {
+      kind: 'map',
+      entries: [{ key: seg.key, value: buildValueForPath(rest, value) }],
+    }
+  }
+  if (seg.kind === 'index') {
+    const items = new Array<UnityPropertyValue>()
+    for (let i = 0; i < seg.index; i++) {
+      items.push({ kind: 'scalar', value: '' })
+    }
+    items.push(buildValueForPath(rest, value))
+    return { kind: 'sequence', items }
+  }
+  // A `size` at the tail without an existing sequence to resize is a no-op;
+  // returning the value verbatim would produce a nonsensical shape.
+  return value
+}
+
+/**
+ * Apply an override value at `segments` inside `current`. Returns a new tree
+ * (path-copy on mutation) or the input verbatim when the path could not be
+ * walked. The apply pass in `expandPrefabInstances` uses the identity of the
+ * returned value to detect whether an override actually landed.
+ */
+const applyOverrideAtPath = (
+  current: UnityPropertyValue,
+  segments: ReadonlyArray<PathSegment>,
+  value: UnityOverrideValue
+): UnityPropertyValue => {
+  if (segments.length === 0) {
+    return value
+  }
+  const seg = segments[0]
+  const rest = segments.slice(1)
+  if (seg.kind === 'key') {
+    if (current.kind !== 'map') {
+      return current
+    }
+    const idx = current.entries.findIndex(e => e.key === seg.key)
+    if (idx < 0) {
+      const built = buildValueForPath(rest, value)
+      return {
+        kind: 'map',
+        entries: [...current.entries, { key: seg.key, value: built }],
+      }
+    }
+    const entry = current.entries[idx]
+    const nextSubValue = applyOverrideAtPath(entry.value, rest, value)
+    if (nextSubValue === entry.value) {
+      return current
+    }
+    const entries = current.entries.slice()
+    entries[idx] = { key: seg.key, value: nextSubValue }
+    return { kind: 'map', entries }
+  }
+  if (seg.kind === 'index') {
+    if (current.kind !== 'sequence') {
+      return current
+    }
+    if (seg.index < 0) {
+      return current
+    }
+    if (seg.index >= current.items.length) {
+      const items = current.items.slice()
+      while (items.length < seg.index) {
+        items.push({ kind: 'scalar', value: '' })
+      }
+      items.push(buildValueForPath(rest, value))
+      return { kind: 'sequence', items }
+    }
+    const item = current.items[seg.index]
+    const nextItem = applyOverrideAtPath(item, rest, value)
+    if (nextItem === item) {
+      return current
+    }
+    const items = current.items.slice()
+    items[seg.index] = nextItem
+    return { kind: 'sequence', items }
+  }
+  // `size`: reshape a sequence to the length parsed from the scalar value.
+  if (current.kind !== 'sequence' || value.kind !== 'scalar') {
+    return current
+  }
+  const nextSize = parseInt(value.value, 10)
+  if (!Number.isFinite(nextSize) || nextSize < 0) {
+    return current
+  }
+  if (nextSize === current.items.length) {
+    return current
+  }
+  if (nextSize > current.items.length) {
+    const items = current.items.slice()
+    while (items.length < nextSize) {
+      items.push({ kind: 'scalar', value: '' })
+    }
+    return { kind: 'sequence', items }
+  }
+  return { kind: 'sequence', items: current.items.slice(0, nextSize) }
+}
+
 interface IModification {
   readonly targetFileId: UnityFileId
   readonly propertyPath: string
-  readonly value: string
+  readonly value: UnityOverrideValue
 }
 
 const modificationsOf = (
@@ -188,18 +358,62 @@ const modificationsOf = (
     }
     const target = referenceFileId(findProperty(item.entries, 'target'))
     const path = findProperty(item.entries, 'propertyPath')
-    const value = findProperty(item.entries, 'value')
-    if (target !== undefined && path !== undefined && path.kind === 'scalar') {
+    if (target === undefined || path === undefined || path.kind !== 'scalar') {
+      continue
+    }
+    const rawValue = findProperty(item.entries, 'value')
+    const scalarValue =
+      rawValue !== undefined && rawValue.kind === 'scalar'
+        ? rawValue.value
+        : undefined
+    // Unity writes both `value` and `objectReference` on each modification and
+    // exactly one is meaningful. A non-empty scalar wins outright; otherwise a
+    // non-zero object reference is the payload; otherwise the empty scalar is
+    // an explicit "cleared to empty" override.
+    if (scalarValue !== undefined && scalarValue.length > 0) {
       result.push({
         targetFileId: target,
         propertyPath: path.value,
-        value:
-          value !== undefined && value.kind === 'scalar' ? value.value : '',
+        value: { kind: 'scalar', value: scalarValue },
       })
+      continue
     }
+    const objectReference = findProperty(item.entries, 'objectReference')
+    if (
+      objectReference !== undefined &&
+      objectReference.kind === 'reference' &&
+      objectReference.reference.fileId !== '0'
+    ) {
+      result.push({
+        targetFileId: target,
+        propertyPath: path.value,
+        value: objectReference,
+      })
+      continue
+    }
+    result.push({
+      targetFileId: target,
+      propertyPath: path.value,
+      value: { kind: 'scalar', value: scalarValue ?? '' },
+    })
   }
   return result
 }
+
+/**
+ * Stable key identifying a single override. Shared between the expansion pass
+ * (which records "applied" outcomes) and the enrichment pass in `asset-diff`
+ * (which lifts that outcome onto each override diff).
+ */
+export const overrideAppliedKey = (
+  enclosingInstanceId: UnityFileId,
+  targetGuid: string | undefined,
+  targetFileId: UnityFileId,
+  propertyPath: string
+): string =>
+  `${enclosingInstanceId}::${
+    targetGuid ?? ''
+  }::${targetFileId}::${propertyPath}`
 
 const isRootTransform = (doc: IUnitySerializedDocument): boolean => {
   if (!transformClassIds.has(doc.classId)) {
@@ -324,6 +538,50 @@ const rawRemovedFileIds = (
     .filter((id): id is UnityFileId => id !== undefined && id !== '0')
 }
 
+/**
+ * `m_AddedComponents` entries: `{targetCorrespondingSourceObject, insertIndex,
+ * addedObject}`. Each entry attaches a component (defined in the current file
+ * as `addedObject`) to a GameObject in the instantiated source, identified by
+ * its source-space fileID. Grouped by source GameObject so the expansion pass
+ * can splice all additions onto that GameObject's `m_Component` list in one
+ * go, in the order they were serialized.
+ */
+const addedComponentsByTargetSource = (
+  doc: IUnitySerializedDocument
+): Map<UnityFileId, Array<UnityFileId>> => {
+  const byTarget = new Map<UnityFileId, Array<UnityFileId>>()
+  const modification = findProperty(doc.properties, 'm_Modification')
+  if (modification === undefined || modification.kind !== 'map') {
+    return byTarget
+  }
+  const list = findProperty(modification.entries, 'm_AddedComponents')
+  if (list === undefined || list.kind !== 'sequence') {
+    return byTarget
+  }
+  for (const item of list.items) {
+    if (item.kind !== 'map') {
+      continue
+    }
+    const targetSourceId = referenceFileId(
+      findProperty(item.entries, 'targetCorrespondingSourceObject')
+    )
+    const addedObjectId = referenceFileId(
+      findProperty(item.entries, 'addedObject')
+    )
+    if (
+      targetSourceId === undefined ||
+      addedObjectId === undefined ||
+      addedObjectId === '0'
+    ) {
+      continue
+    }
+    const existing = byTarget.get(targetSourceId) ?? []
+    existing.push(addedObjectId)
+    byTarget.set(targetSourceId, existing)
+  }
+  return byTarget
+}
+
 const strippedPlaceholdersByInstance = (
   documents: ReadonlyArray<IUnitySerializedDocument>
 ): Map<UnityFileId, Map<UnityFileId, UnityFileId>> => {
@@ -354,12 +612,33 @@ export const expandPrefabInstances = (
   resolveSource: SourcePrefabResolver,
   resolveSourceName: SourceNameResolver = () => undefined,
   instanceRoots?: Map<UnityFileId, UnityFileId>,
+  sourceGuidByExpandedNode?: Map<UnityFileId, string>,
+  /**
+   * `${guid}::${sourceFileId}` → fileID of the materialized object in the
+   * CURRENT namespace. Populated at every recursion level (and folded into
+   * outer levels via remap), so a Prefab override that targets `(guid, X)` in
+   * ANY nested source — direct or deep reach-through — can be looked up to
+   * the exact hierarchy node it affects.
+   */
+  sourceOriginByExpandedNode?: Map<string, UnityFileId>,
+  /**
+   * Overrides that were successfully baked into a cloned document, reported
+   * via `overrideAppliedKey` so the enricher in `asset-diff` can annotate the
+   * matching override diff entries and the Inspector can hide them (their
+   * effect is already visible in the per-document property diff). Populated
+   * only at the outermost call — inner overrides are the source prefab's own
+   * business and don't participate in this diff.
+   */
+  appliedOverrides?: Set<string>,
+  /**
+   * Guids of source prefabs already being expanded in an ancestor call.
+   * Prefabs are DAGs in a healthy Unity project, but broken imports can
+   * introduce cycles; this set is the cycle guard replacing the old fixed
+   * depth cap so genuinely deep-but-acyclic nesting expands fully.
+   */
+  visitedGuids: ReadonlySet<string> = new Set(),
   depth: number = 0
 ): ReadonlyArray<IUnitySerializedDocument> => {
-  if (depth >= maxExpansionDepth) {
-    return documents
-  }
-
   const out = new Map<UnityFileId, IUnitySerializedDocument>()
   for (const doc of documents) {
     if (doc.classId !== prefabInstanceClassId && !doc.stripped) {
@@ -375,6 +654,13 @@ export const expandPrefabInstances = (
     UnityFileId,
     ReadonlyMap<UnityFileId, IUnitySerializedDocument>
   >()
+  // Per-instance remap function + source guid, retained so the value-override
+  // pass at the end of this call can walk each instance's modifications with
+  // the same id remapping the clone pass used.
+  const instanceRemaps = new Map<
+    UnityFileId,
+    { readonly remap: Remap; readonly sourcePrefabGuid: string }
+  >()
 
   for (const instance of documents) {
     if (instance.classId !== prefabInstanceClassId) {
@@ -388,16 +674,33 @@ export const expandPrefabInstances = (
     if (guid === undefined) {
       continue
     }
+    // Cycle guard: if an ancestor call is already expanding this same source
+    // prefab, don't recurse — Unity forbids cyclic prefabs but broken imports
+    // can produce them, and the visited-set replaces the old fixed depth cap
+    // so genuinely deep-but-acyclic nesting expands to completion.
+    if (visitedGuids.has(guid)) {
+      continue
+    }
     const sourceDocs = resolveSource(guid)
     if (sourceDocs === null) {
       continue
     }
 
+    const nextVisited = new Set(visitedGuids)
+    nextVisited.add(guid)
+    const innerOriginMap =
+      sourceOriginByExpandedNode !== undefined
+        ? new Map<string, UnityFileId>()
+        : undefined
     const expandedSource = expandPrefabInstances(
       sourceDocs,
       resolveSource,
       resolveSourceName,
       undefined,
+      undefined,
+      innerOriginMap,
+      undefined,
+      nextVisited,
       depth + 1
     )
     const placeholderMap = placeholders.get(instance.fileId)
@@ -414,6 +717,7 @@ export const expandPrefabInstances = (
       }
       return mapped
     }
+    instanceRemaps.set(instance.fileId, { remap, sourcePrefabGuid: guid })
 
     // `m_RemovedComponents` drops a single component; `m_RemovedGameObjects`
     // drops a GameObject together with its whole subtree (Unity removes the
@@ -452,16 +756,14 @@ export const expandPrefabInstances = (
       })()
     )
 
-    const simpleOverrides = new Map<UnityFileId, Map<string, string>>()
-    for (const mod of modificationsOf(instance)) {
-      if (mod.propertyPath.includes('.') || mod.propertyPath.includes('[')) {
-        continue
-      }
-      const id = remap(mod.targetFileId)
-      const byKey = simpleOverrides.get(id) ?? new Map<string, string>()
-      byKey.set(mod.propertyPath, mod.value)
-      simpleOverrides.set(id, byKey)
-    }
+    // Components added to a nested instance's GameObjects via
+    // `m_AddedComponents` — Unity variant overrides that graft an extra
+    // MonoBehaviour (etc.) onto an existing source object. The addedObject
+    // fileIDs live in the current file already (parsed as regular documents);
+    // we just need to splice them into the target GameObject's `m_Component`
+    // list so the hierarchy walk finds them under the right parent instead of
+    // leaving them stranded as orphans.
+    const addedComponents = addedComponentsByTargetSource(instance)
 
     for (const sourceDoc of expandedSource) {
       if (removedSourceIds.has(sourceDoc.fileId)) {
@@ -489,16 +791,81 @@ export const expandPrefabInstances = (
         }
       }
 
-      const overrides = simpleOverrides.get(newId)
-      if (overrides !== undefined) {
-        let properties = cloned.properties
-        for (const [key, value] of overrides) {
-          properties = setProperty(properties, key, { kind: 'scalar', value })
+      // Splice components added by `m_AddedComponents` onto their source
+      // GameObject's `m_Component` list. Only applied at depth 0 — deeper
+      // recursions may have already applied their own additions, but the
+      // components added by THIS instance target THIS instance's source ids.
+      const added = addedComponents.get(sourceDoc.fileId)
+      if (added !== undefined && sourceDoc.classId === 1) {
+        const componentValue = findProperty(cloned.properties, 'm_Component')
+        const existingItems =
+          componentValue !== undefined && componentValue.kind === 'sequence'
+            ? componentValue.items
+            : []
+        const extraItems: ReadonlyArray<UnityPropertyValue> = added.map(
+          componentId => ({
+            kind: 'map',
+            entries: [
+              {
+                key: 'component',
+                value: {
+                  kind: 'reference',
+                  reference: {
+                    fileId: componentId,
+                    propertyPath: 'component',
+                  },
+                },
+              },
+            ],
+          })
+        )
+        cloned = {
+          ...cloned,
+          properties: setProperty(cloned.properties, 'm_Component', {
+            kind: 'sequence',
+            items: [...existingItems, ...extraItems],
+          }),
         }
-        cloned = { ...cloned, properties }
       }
 
       out.set(newId, cloned)
+      // Only the top-level expansion records origin. Recursive expansions
+      // (depth>0) can't populate a top-level map because the caller re-remaps
+      // their IDs when it clones them anyway; the outer clone step tags the
+      // resulting top-level ID with the outer instance's own guid, which is
+      // the "immediate parent prefab" the user actually cares about.
+      if (depth === 0 && sourceGuidByExpandedNode !== undefined) {
+        sourceGuidByExpandedNode.set(newId, guid)
+      }
+      // Origin map — populated at every depth. Key is
+      // `${enclosingInstanceId}::${sourceGuid}::${sourceFileId}` so multiple
+      // instances of the same source prefab in the current file get distinct
+      // entries instead of clobbering each other (two KanbanYukata → two
+      // WebLauncherDialog clones must both be addressable). The outer
+      // expansion of a deeper source will re-remap these values via its own
+      // `remap` (see the absorb step below) so the same key keeps pointing to
+      // the correct clone all the way to depth 0.
+      if (sourceOriginByExpandedNode !== undefined) {
+        sourceOriginByExpandedNode.set(
+          `${instance.fileId}::${guid}::${sourceDoc.fileId}`,
+          newId
+        )
+      }
+    }
+    // Absorb the inner call's origin map. Keys already encode the sub-
+    // instance's identity plus the deeper `(guid, sourceFileId)` pair, so we
+    // keep them intact — only re-remap the VALUES (the fileIDs) into our
+    // outer namespace via the same placeholder/XOR logic the clone loop just
+    // applied above. The enclosingInstanceId in absorbed keys stays that of
+    // the deeper instance; enrichOverride only looks up by the OUTER instance
+    // key, which is written by the direct step above.
+    if (
+      sourceOriginByExpandedNode !== undefined &&
+      innerOriginMap !== undefined
+    ) {
+      for (const [key, innerFileId] of innerOriginMap) {
+        sourceOriginByExpandedNode.set(key, remap(innerFileId))
+      }
     }
   }
 
@@ -661,12 +1028,98 @@ export const expandPrefabInstances = (
       })
 
       if (
+        depth === 0 &&
+        sourceGuidByExpandedNode !== undefined &&
+        guid !== undefined
+      ) {
+        sourceGuidByExpandedNode.set(gameObjectId, guid)
+        sourceGuidByExpandedNode.set(transformId, guid)
+      }
+      // Origin entries for the FBX fallback: the stripped Transform's
+      // m_CorrespondingSourceObject.fileId is the FBX-internal id an
+      // override can reference. Unity's FBX importer pairs a Transform at
+      // fileID 400000+N with a GameObject at 100000+N, so we can register
+      // BOTH ids when the pattern holds. Key format matches the direct-clone
+      // entries: enclosingInstanceId::guid::sourceFileId.
+      if (sourceOriginByExpandedNode !== undefined && guid !== undefined) {
+        if (sourceId !== undefined) {
+          sourceOriginByExpandedNode.set(
+            `${instance.fileId}::${guid}::${sourceId}`,
+            transformId
+          )
+          const sourceIdBig = BigInt(sourceId)
+          if (sourceIdBig >= 400000n) {
+            const pairedGoId = (sourceIdBig - 300000n).toString()
+            sourceOriginByExpandedNode.set(
+              `${instance.fileId}::${guid}::${pairedGoId}`,
+              gameObjectId
+            )
+          }
+        }
+      }
+
+      if (
         isRoot &&
         depth === 0 &&
         instanceRoots !== undefined &&
         !instanceRoots.has(instance.fileId)
       ) {
         instanceRoots.set(instance.fileId, gameObjectId)
+      }
+    }
+  }
+
+  // Value-override pass. Bake each PrefabInstance's `m_Modifications` into the
+  // cloned target documents so the per-side documents mirror Unity's effective
+  // state — a change in an override then surfaces as an ordinary property
+  // diff rather than as a dangling row the reader has to reconcile against a
+  // silently-changed source default. Runs at every depth: inner overrides
+  // bake into source-side clones that outer levels then remap into their own
+  // namespace via `cloneDocument`. Runs AFTER the fallback pass so overrides
+  // that target an FBX/model-import placeholder (whose real object graph we
+  // couldn't expand) still land — the fallback pass populates those slots
+  // with synthesized GameObject/Transform docs the walker can descend into.
+  //
+  // `applied` is populated only at depth 0 (the outermost file's overrides —
+  // the ones surfaced by this diff). Inner-depth overrides are the source
+  // prefab's own business and don't need to reach the enricher.
+  for (const instance of documents) {
+    if (instance.classId !== prefabInstanceClassId) {
+      continue
+    }
+    const info = instanceRemaps.get(instance.fileId)
+    if (info === undefined) {
+      continue
+    }
+    for (const mod of modificationsOf(instance)) {
+      const targetId = info.remap(mod.targetFileId)
+      const target = out.get(targetId)
+      if (target === undefined) {
+        continue
+      }
+      const segments = parsePropertyPath(mod.propertyPath)
+      if (segments.length === 0) {
+        continue
+      }
+      // Wrap the doc's top-level property list in a synthetic map so the
+      // path walker's first-key case works uniformly; unwrap for storage.
+      const rootValue: UnityPropertyValue = {
+        kind: 'map',
+        entries: target.properties,
+      }
+      const applied = applyOverrideAtPath(rootValue, segments, mod.value)
+      if (applied !== rootValue && applied.kind === 'map') {
+        out.set(targetId, { ...target, properties: applied.entries })
+      }
+      if (appliedOverrides !== undefined && depth === 0) {
+        appliedOverrides.add(
+          overrideAppliedKey(
+            instance.fileId,
+            info.sourcePrefabGuid,
+            mod.targetFileId,
+            mod.propertyPath
+          )
+        )
       }
     }
   }

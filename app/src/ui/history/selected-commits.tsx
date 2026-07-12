@@ -37,6 +37,10 @@ import { UnreachableCommitsTab } from './unreachable-commits-dialog'
 import { ExpandableCommitSummary } from './expandable-commit-summary'
 import { DiffHeader } from '../diff/diff-header'
 import { Account } from '../../models/account'
+import {
+  readUnityHideFloatDrift,
+  writeUnityHideFloatDrift,
+} from '../diff/unity-diff-preferences'
 import { Emoji } from '../../lib/emoji'
 
 interface ISelectedCommitsProps {
@@ -96,6 +100,7 @@ interface ISelectedCommitsProps {
 interface ISelectedCommitsState {
   readonly isExpanded: boolean
   readonly showUnityAsText: boolean
+  readonly hideUnityFloatDrift: boolean
 }
 
 /** The History component. Contains the commit list, commit summary, and diff. */
@@ -111,6 +116,7 @@ export class SelectedCommits extends React.Component<
     this.state = {
       isExpanded: false,
       showUnityAsText: false,
+      hideUnityFloatDrift: readUnityHideFloatDrift(),
     }
   }
 
@@ -175,6 +181,7 @@ export class SelectedCommits extends React.Component<
           onOpenSubmodule={this.props.onOpenSubmodule}
           showUnityAsText={this.state.showUnityAsText}
           onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
+          hideUnityFloatDrift={this.state.hideUnityFloatDrift}
         />
       </div>
     )
@@ -199,6 +206,8 @@ export class SelectedCommits extends React.Component<
         onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
         showUnityAsText={this.state.showUnityAsText}
         onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
+        hideUnityFloatDrift={this.state.hideUnityFloatDrift}
+        onHideUnityFloatDriftChanged={this.onHideUnityFloatDriftChanged}
         onDiffOptionsOpened={this.props.onDiffOptionsOpened}
       />
     )
@@ -250,6 +259,11 @@ export class SelectedCommits extends React.Component<
 
   private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
     this.setState({ showUnityAsText })
+  }
+
+  private onHideUnityFloatDriftChanged = (hideUnityFloatDrift: boolean) => {
+    writeUnityHideFloatDrift(hideUnityFloatDrift)
+    this.setState({ hideUnityFloatDrift })
   }
 
   private onCommitSummaryReset = () => {

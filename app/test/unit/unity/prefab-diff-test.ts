@@ -2,6 +2,10 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { parseUnityYaml } from '../../../src/lib/unity/unity-yaml-parser'
 import { diffPrefabInstances } from '../../../src/lib/unity/prefab-diff'
+import { UnityPropertyValue } from '../../../src/models/unity/serialized-asset'
+
+const scalarValue = (value: UnityPropertyValue | null): string | null =>
+  value !== null && value.kind === 'scalar' ? value.value : null
 
 const instance = (posX: string, extra: string = '') =>
   [
@@ -46,8 +50,9 @@ describe('diffPrefabInstances', () => {
 
     const pos = inst.overrides.find(o => o.propertyPath === 'm_LocalPosition.x')
     assert.equal(pos?.status, 'modified')
-    assert.equal(pos?.before, '10')
-    assert.equal(pos?.after, '25')
+    assert.equal(pos?.targetGuid, 'abcd')
+    assert.equal(scalarValue(pos?.before ?? null), '10')
+    assert.equal(scalarValue(pos?.after ?? null), '25')
 
     const name = inst.overrides.find(o => o.propertyPath === 'm_Name')
     assert.equal(name?.status, 'unchanged')
@@ -71,7 +76,37 @@ describe('diffPrefabInstances', () => {
       o => o.propertyPath === 'm_LocalPosition.y'
     )
     assert.equal(added?.status, 'added')
-    assert.equal(added?.after, '7')
+    assert.equal(scalarValue(added?.after ?? null), '7')
+  })
+
+  it('preserves an objectReference value override', () => {
+    const withReference = [
+      '--- !u!1001 &11866470',
+      'PrefabInstance:',
+      '  m_ObjectHideFlags: 0',
+      '  serializedVersion: 2',
+      '  m_Modification:',
+      '    serializedVersion: 3',
+      '    m_TransformParent: {fileID: 0}',
+      '    m_Modifications:',
+      '    - target: {fileID: 42, guid: abcd, type: 3}',
+      '      propertyPath: m_Materials.Array.data[0]',
+      '      value: ',
+      '      objectReference: {fileID: 2100000, guid: deadbeef, type: 2}',
+      '    m_RemovedComponents: []',
+      '    m_RemovedGameObjects: []',
+      '    m_AddedGameObjects: []',
+      '    m_AddedComponents: []',
+      '  m_SourcePrefab: {fileID: 100100000, guid: abcd, type: 3}',
+    ].join('\n')
+
+    const docs = parseUnityYaml(withReference).documents
+    const override = diffPrefabInstances(docs, docs)[0].overrides[0]
+    assert.equal(override?.after?.kind, 'reference')
+    if (override?.after?.kind === 'reference') {
+      assert.equal(override.after.reference.guid, 'deadbeef')
+      assert.equal(override.after.reference.fileId, '2100000')
+    }
   })
 
   it('reports no prefab instances for a plain asset', () => {

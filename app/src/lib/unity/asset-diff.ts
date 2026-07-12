@@ -17,13 +17,19 @@ import {
   UnityParseStatus,
 } from '../../models/unity/serialized-asset'
 import {
+  IUnityPrefabOverrideDiff,
   IUnityResolvedGuid,
   IUnitySemanticDiffResult,
 } from '../../models/unity/semantic-diff'
 import { buildHierarchy } from './hierarchy-builder'
-import { expandPrefabInstances } from './prefab-expansion'
+import { expandPrefabInstances, overrideAppliedKey } from './prefab-expansion'
 import { computeSemanticDiff, IUnityParsedSide } from './semantic-diff'
 import { diffPrefabInstances, sourcePrefabGuidOf } from './prefab-diff'
+import {
+  buildPrefabTargetIndex,
+  IUnityPrefabTargetInfo,
+} from './prefab-target-index'
+import { collectReferencedGuids } from './reference-collector'
 
 /** The basename of a `/`-separated path with its final extension removed. */
 export const basenameWithoutExtension = (path: string): string => {
@@ -82,13 +88,19 @@ export const computeUnityAssetDiff = (
 
   const expandSide = (
     documents: ReadonlyArray<IUnitySerializedDocument>,
-    instanceRoots?: Map<UnityFileId, UnityFileId>
+    instanceRoots?: Map<UnityFileId, UnityFileId>,
+    sourceGuidByExpandedNode?: Map<UnityFileId, string>,
+    sourceOriginByExpandedNode?: Map<string, UnityFileId>,
+    appliedOverrides?: Set<string>
   ): IUnityParsedSide => {
     const expanded = expandPrefabInstances(
       documents,
       guid => sources.get(guid) ?? null,
       resolveName,
-      instanceRoots
+      instanceRoots,
+      sourceGuidByExpandedNode,
+      sourceOriginByExpandedNode,
+      appliedOverrides
     )
     return { documents: expanded, roots: buildHierarchy(expanded) }
   }
@@ -99,11 +111,44 @@ export const computeUnityAssetDiff = (
   const shouldExpand = instanceCount > 0
 
   const afterInstanceRoots = new Map<UnityFileId, UnityFileId>()
+  const beforeInstanceRoots = new Map<UnityFileId, UnityFileId>()
+  // fileId (in the current file's expanded namespace) → the source-prefab
+  // guid the object came from via a nested-prefab expansion. Missing entries
+  // mean the object is native to the file being diffed.
+  const sourceGuidByExpandedNode = new Map<UnityFileId, string>()
+  // "guid::sourceFileId" → fileId of the object in the CURRENT expanded
+  // namespace. Populated recursively so an override targeting any nested
+  // source (direct or reach-through) resolves to its actual hierarchy node.
+  // Prefer after-side because that's what the user is inspecting; fall back
+  // to before-side for removed content.
+  const afterSourceOrigin = new Map<string, UnityFileId>()
+  const beforeSourceOrigin = new Map<string, UnityFileId>()
+  // Override keys that the expansion successfully baked into a cloned doc on
+  // each side. Their effect is already visible in the per-document property
+  // diff so the enricher tags the matching override diff entries as
+  // `applied` and the Inspector suppresses them from the override panel;
+  // whichever side landed the override is enough — if only one side applied
+  // (typical for a removed-only or added-only override) the doc diff on that
+  // side still reflects the change.
+  const beforeAppliedOverrides = new Set<string>()
+  const afterAppliedOverrides = new Set<string>()
   const beforeSide: IUnityParsedSide = shouldExpand
-    ? expandSide(before.documents)
+    ? expandSide(
+        before.documents,
+        beforeInstanceRoots,
+        sourceGuidByExpandedNode,
+        beforeSourceOrigin,
+        beforeAppliedOverrides
+      )
     : { documents: before.documents, roots: before.roots }
   const afterSide: IUnityParsedSide = shouldExpand
-    ? expandSide(after.documents, afterInstanceRoots)
+    ? expandSide(
+        after.documents,
+        afterInstanceRoots,
+        sourceGuidByExpandedNode,
+        afterSourceOrigin,
+        afterAppliedOverrides
+      )
     : { documents: after.documents, roots: after.roots }
 
   const { roots, documents } = computeSemanticDiff(beforeSide, afterSide)
@@ -113,6 +158,175 @@ export const computeUnityAssetDiff = (
   // side never carries a 1001 to compare — running the override diff on the
   // pre-expansion sides is what surfaces per-override modification/add/remove.
   const prefabInstances = diffPrefabInstances(before.documents, after.documents)
+
+  // Per-source target indexes shared across every instance that points at the
+  // same source prefab. A single scene often instantiates the same prefab many
+  // times; without this the walk would run once per instance for identical
+  // input.
+  //
+  // The index is built off the FULLY EXPANDED source, not the raw source
+  // documents: an override's `target.fileID` frequently points at an object
+  // that lives deeper in a nested prefab (Unity permits reach-through), whose
+  // id in the source's own file is only a stripped placeholder or a remapped
+  // clone of a base object. Expanding the source materializes those into real
+  // GameObjects/components so the lookup resolves to something with a name
+  // and a hierarchy path instead of falling through to "Unresolved".
+  const targetIndexByGuid = new Map<
+    string,
+    ReadonlyMap<UnityFileId, IUnityPrefabTargetInfo>
+  >()
+  const expandedSourceByGuid = new Map<
+    string,
+    ReadonlyArray<IUnitySerializedDocument>
+  >()
+  const expandSourceOnce = (
+    guid: string
+  ): ReadonlyArray<IUnitySerializedDocument> | undefined => {
+    const cached = expandedSourceByGuid.get(guid)
+    if (cached !== undefined) {
+      return cached
+    }
+    const raw = sources.get(guid)
+    if (raw === undefined) {
+      return undefined
+    }
+    const expanded = expandPrefabInstances(
+      raw,
+      g => sources.get(g) ?? null,
+      resolveName
+    )
+    expandedSourceByGuid.set(guid, expanded)
+    return expanded
+  }
+  const targetIndexFor = (
+    guid: string
+  ): ReadonlyMap<UnityFileId, IUnityPrefabTargetInfo> | undefined => {
+    const cached = targetIndexByGuid.get(guid)
+    if (cached !== undefined) {
+      return cached
+    }
+    const expanded = expandSourceOnce(guid)
+    if (expanded === undefined) {
+      return undefined
+    }
+    const index = buildPrefabTargetIndex(expanded, resolveName)
+    targetIndexByGuid.set(guid, index)
+    return index
+  }
+
+  // Unity re-serializes floats every time a scene is saved, so a rotated
+  // GameObject accretes quaternion overrides whose axes wobble in their
+  // last few significant digits without any real change. Detect this so the
+  // Inspector can hide the drift behind "Show unchanged" instead of drowning
+  // real edits in a wall of near-identical numbers. Nested paths (arrays,
+  // maps) are left alone — the pattern is quaternion/vector scalars only.
+  const floatDriftRelativeThreshold = 1e-5
+  const scalarFloatValue = (
+    value: IUnityPrefabOverrideDiff['before']
+  ): number | undefined => {
+    if (value === null || value.kind !== 'scalar') {
+      return undefined
+    }
+    const parsed = Number(value.value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const isTrivialFloatDrift = (override: IUnityPrefabOverrideDiff): boolean => {
+    if (override.status !== 'modified') {
+      return false
+    }
+    const before = scalarFloatValue(override.before)
+    const after = scalarFloatValue(override.after)
+    if (before === undefined || after === undefined || before === after) {
+      return false
+    }
+    const magnitude = Math.max(Math.abs(before), Math.abs(after))
+    if (magnitude === 0) {
+      return false
+    }
+    return Math.abs(before - after) / magnitude < floatDriftRelativeThreshold
+  }
+
+  const enrichOverride = (
+    override: IUnityPrefabOverrideDiff,
+    fallbackGuid: string | undefined,
+    enclosingInstanceId: UnityFileId
+  ): IUnityPrefabOverrideDiff => {
+    const guid = override.targetGuid ?? fallbackGuid
+    const index = guid !== undefined ? targetIndexFor(guid) : undefined
+    const info = index?.get(override.targetFileId)
+    const appliedKey = overrideAppliedKey(
+      enclosingInstanceId,
+      override.targetGuid,
+      override.targetFileId,
+      override.propertyPath
+    )
+    const isApplied =
+      beforeAppliedOverrides.has(appliedKey) ||
+      afterAppliedOverrides.has(appliedKey)
+    let withMeta: IUnityPrefabOverrideDiff = override
+    if (isApplied) {
+      withMeta = { ...withMeta, applied: true }
+    }
+    if (isTrivialFloatDrift(override)) {
+      withMeta = { ...withMeta, trivialFloatDrift: true }
+    }
+    // Look up the target in the CURRENT file's expanded namespace via the
+    // recursive origin map. Handles both direct (target.guid === enclosing
+    // .sourcePrefabGuid) and deep reach-through (target.guid is a further-
+    // nested source) — the map was populated for all `(guid, sourceFileId)`
+    // pairs during expansion, so any reachable target resolves in one lookup.
+    // Key includes enclosingInstanceId so multiple instances of the same
+    // source prefab (two KanbanYukata → two WebLauncherDialog clones) stay
+    // distinct instead of aggregating on one node. AFTER wins over BEFORE so
+    // the badge follows the current state; removed objects fall back to
+    // their before-side position.
+    const lookup = (sourceFileId: UnityFileId | undefined) => {
+      if (guid === undefined || sourceFileId === undefined) {
+        return undefined
+      }
+      const key = `${enclosingInstanceId}::${guid}::${sourceFileId}`
+      return afterSourceOrigin.get(key) ?? beforeSourceOrigin.get(key)
+    }
+    const expandedTargetGameObjectFileId = lookup(
+      info?.ownerGameObjectFileId ?? override.targetFileId
+    )
+    // The target itself (component or GameObject) — used to route the override
+    // into the correct component section in the Inspector rather than piling
+    // every override onto one "Prefab overrides" block at the top.
+    const expandedTargetFileId = lookup(override.targetFileId)
+    if (info === undefined) {
+      if (
+        expandedTargetGameObjectFileId === undefined &&
+        expandedTargetFileId === undefined
+      ) {
+        return withMeta
+      }
+      return {
+        ...withMeta,
+        expandedTargetGameObjectFileId,
+        expandedTargetFileId,
+      }
+    }
+    const label =
+      info.kind === 'GameObject'
+        ? info.ownerName.length > 0
+          ? info.ownerName
+          : withMeta.targetLabel
+        : `${info.ownerName.length > 0 ? info.ownerName : '(unnamed)'} (${
+            info.componentType ?? 'Component'
+          })`
+    return {
+      ...withMeta,
+      targetLabel: label,
+      targetKind: info.kind,
+      targetGameObjectFileId: info.ownerGameObjectFileId,
+      targetGameObjectPath: info.ownerPath,
+      targetGameObjectName: info.ownerName,
+      targetComponentType: info.componentType,
+      expandedTargetGameObjectFileId,
+      expandedTargetFileId,
+    }
+  }
 
   const enrichedInstances = prefabInstances.map(instance => {
     const sourcePrefabPath =
@@ -125,19 +339,39 @@ export const computeUnityAssetDiff = (
         : sourcePrefabPath !== undefined
         ? basenameWithoutSuffix(sourcePrefabPath, '.prefab')
         : '(prefab instance)'
+    // Instance existed on both sides: prefer the AFTER-side placeholders so
+    // the current state drives resolution. A removed instance falls back to
+    // BEFORE (that's where it lived); an added one falls back to AFTER.
     return {
       ...instance,
       sourcePrefabPath,
       name,
-      nodeFileId: afterInstanceRoots.get(instance.fileId),
+      // Removed instances have no after-side expansion; fall back to where they
+      // WERE in the before-side tree so the hierarchy still surfaces them under
+      // the right parent instead of dumping them into a top-level fallback.
+      nodeFileId:
+        afterInstanceRoots.get(instance.fileId) ??
+        beforeInstanceRoots.get(instance.fileId),
+      overrides: instance.overrides.map(o =>
+        enrichOverride(o, instance.sourcePrefabGuid, instance.fileId)
+      ),
     }
   })
 
+  // GUIDs whose paths the Inspector needs to render: the ones referenced in
+  // the raw file (m_Script, materials, etc.), the source-prefab GUIDs of every
+  // PrefabInstance, AND every GUID reachable through the expanded namespace —
+  // the cloned docs surfaced by expansion pull in script and material refs
+  // that live in nested prefabs and therefore never appear in the outer
+  // file's raw text. Missing those leaves a MonoBehaviour heading rendered as
+  // its raw script GUID instead of the friendly script name.
   const guids = new Set<string>([
     ...before.referencedGuids,
     ...after.referencedGuids,
     ...sourceGuidsOf(before.documents),
     ...sourceGuidsOf(after.documents),
+    ...(shouldExpand ? collectReferencedGuids(beforeSide.documents) : []),
+    ...(shouldExpand ? collectReferencedGuids(afterSide.documents) : []),
   ])
   const resolvedGuids = new Array<IUnityResolvedGuid>()
   for (const guid of guids) {
@@ -154,6 +388,16 @@ export const computeUnityAssetDiff = (
     (before.present ? before.status : undefined) ??
     'invalid-yaml'
 
+  // Convert the guid map to a path map so the Inspector can render a
+  // human-friendly "Prefab: X.prefab" badge without another async lookup.
+  const sourcePrefabByExpandedNode = new Array<readonly [UnityFileId, string]>()
+  for (const [fileId, guid] of sourceGuidByExpandedNode) {
+    const path = pathForGuid(guid)
+    if (path !== undefined) {
+      sourcePrefabByExpandedNode.push([fileId, path])
+    }
+  }
+
   return {
     result: {
       status,
@@ -161,6 +405,7 @@ export const computeUnityAssetDiff = (
       documents,
       prefabInstances: enrichedInstances,
       resolvedGuids,
+      sourcePrefabByExpandedNode,
       warnings: [...before.warnings, ...after.warnings],
     },
     expandedBefore: beforeSide.documents,

@@ -24,10 +24,10 @@ import {
 } from '../../models/diff'
 import { Button } from '../lib/button'
 import { getBoolean, setBoolean } from '../../lib/local-storage'
-
-/** Persisted Unity diff view preferences (remembered across files/sessions). */
-const unityShowUnchangedKey = 'unity-diff-show-unchanged'
-const unityAlwaysOpenLargeKey = 'unity-diff-always-open-large'
+import {
+  unityAlwaysOpenLargeKey,
+  unityShowUnchangedKey,
+} from './unity-diff-preferences'
 import {
   NewImageDiff,
   ModifiedImageDiff,
@@ -118,6 +118,12 @@ interface IDiffProps {
 
   /** Called when the user changes the Unity diff presentation mode. */
   readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
+
+  /**
+   * Whether Unity's floating-point re-serialization noise is filtered from the
+   * override list in the Inspector. Default `true`.
+   */
+  readonly hideUnityFloatDrift?: boolean
 }
 
 interface IDiffState {
@@ -188,6 +194,7 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
             showUnchanged={this.state.showUnityUnchanged}
             onEnableShowUnchanged={this.enableUnityUnchanged}
             alwaysOpenLarge={this.state.unityAlwaysOpenLarge}
+            hideFloatDrift={this.props.hideUnityFloatDrift !== false}
           />
         )}
       </div>

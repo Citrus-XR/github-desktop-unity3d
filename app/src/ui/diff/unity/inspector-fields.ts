@@ -186,6 +186,71 @@ export const isVectorLikeMap = (
       vectorAxisKeys.includes(e.key)
   )
 
+/**
+ * Split a Prefab override propertyPath into its base and vector axis, e.g.
+ * `m_LocalRotation.x` → `{ base: 'm_LocalRotation', axis: 'x' }`. Returns null
+ * for a scalar path so the caller can render it without vector coalescing.
+ */
+const vectorAxisPattern = /^(.+)\.([xyzwrgba])$/
+export const vectorAxisFromPropertyPath = (
+  propertyPath: string
+): { readonly base: string; readonly axis: string } | null => {
+  const match = vectorAxisPattern.exec(propertyPath)
+  return match === null ? null : { base: match[1], axis: match[2] }
+}
+
+// Friendly Inspector labels for common override property paths. Names Unity's
+// own Overrides panel uses instead of the internal m_ field name.
+const friendlyOverridePathLabels: ReadonlyMap<string, string> = new Map([
+  ['m_Name', 'Name'],
+  ['m_IsActive', 'Active'],
+  ['m_Enabled', 'Enabled'],
+  ['m_TagString', 'Tag'],
+  ['m_Layer', 'Layer'],
+  ['m_StaticEditorFlags', 'Static'],
+  ['m_LocalPosition', 'Position'],
+  ['m_LocalRotation', 'Rotation'],
+  ['m_LocalScale', 'Scale'],
+  ['m_LocalEulerAnglesHint', 'Euler Angles'],
+  ['m_AnchoredPosition', 'Anchored Position'],
+  ['m_AnchorMin', 'Anchor Min'],
+  ['m_AnchorMax', 'Anchor Max'],
+  ['m_SizeDelta', 'Size Delta'],
+  ['m_Pivot', 'Pivot'],
+  ['m_Size', 'Size'],
+  ['m_Center', 'Center'],
+  ['m_Radius', 'Radius'],
+  ['m_Height', 'Height'],
+  ['m_Materials', 'Materials'],
+  ['m_Material', 'Material'],
+  ['m_Mesh', 'Mesh'],
+  ['m_Script', 'Script'],
+])
+
+/**
+ * Friendlier label for an override propertyPath. Known field names are mapped
+ * to their Inspector counterpart; a leading `m_` is stripped and the remainder
+ * pretty-printed (`m_ProbeAnchor` → `Probe Anchor`) so unmapped fields still
+ * read well. Nested paths (`urls.Array.data[0].url`) pass through unchanged.
+ */
+export const friendlyOverridePathLabel = (propertyPath: string): string => {
+  const mapped = friendlyOverridePathLabels.get(propertyPath)
+  if (mapped !== undefined) {
+    return mapped
+  }
+  if (
+    propertyPath.startsWith('m_') &&
+    !propertyPath.includes('.') &&
+    !propertyPath.includes('[')
+  ) {
+    const trimmed = propertyPath.slice(2)
+    return trimmed
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/^\w/, c => c.toUpperCase())
+  }
+  return propertyPath
+}
+
 /** Total number of GameObject nodes across a hierarchy forest. */
 export const countNodes = (
   nodes: ReadonlyArray<IUnityGameObjectDiffNode>

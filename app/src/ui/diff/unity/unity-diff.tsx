@@ -10,6 +10,7 @@ import {
   IUnityDocumentDiff,
   IUnityGameObjectDiffNode,
   IUnityPrefabInstanceDiff,
+  IUnityPrefabOverrideDiff,
   IUnitySemanticDiffRequest,
   IUnitySemanticDiffResult,
 } from '../../../models/unity/semantic-diff'
@@ -35,6 +36,11 @@ interface IUnityDiffProps {
   readonly onEnableShowUnchanged?: () => void
   /** Whether to parse even when a side exceeds the default size limit. */
   readonly alwaysOpenLarge: boolean
+  /**
+   * Whether Prefab override rows classified as Unity's floating-point
+   * re-serialization noise are hidden from the Inspector.
+   */
+  readonly hideFloatDrift: boolean
 }
 
 interface IUnityDiffState {
@@ -48,6 +54,16 @@ interface IUnityDiffState {
   readonly changedSubtree: ReadonlySet<UnityFileId>
   /** Changed prefab instances keyed by their hierarchy node fileId. */
   readonly prefabByNode: ReadonlyMap<UnityFileId, IUnityPrefabInstanceDiff>
+  /**
+   * Individual overrides keyed by the target GameObject's fileID in the merged
+   * hierarchy (expanded-namespace id). Lets the hierarchy show every overridden
+   * nested object as modified, and lets the Inspector show only the overrides
+   * that actually affect the selected object.
+   */
+  readonly overridesByNode: ReadonlyMap<
+    UnityFileId,
+    ReadonlyArray<IUnityPrefabOverrideDiff>
+  >
   /**
    * Document property diffs available to the Inspector, keyed by fileId. Seeded
    * with the changed documents the diff returns eagerly; an unchanged node's
@@ -123,6 +139,7 @@ export class UnityDiff extends React.Component<
       expanded: new Set(),
       changedSubtree: new Set(),
       prefabByNode: new Map(),
+      overridesByNode: new Map(),
       docCache: new Map(),
       search: '',
       hierarchyWidth: defaultHierarchyWidth,
@@ -156,6 +173,113 @@ export class UnityDiff extends React.Component<
     if (prevState.selectedFileId !== this.state.selectedFileId) {
       this.ensureDocumentsLoaded(this.state.selectedFileId)
     }
+    // Toggling the drift filter shifts which prefab instances count as
+    // "changed", which flows into the hierarchy tree colours and the
+    // changed-subtree gating. Recompute those without touching the user's
+    // manual expand/collapse state.
+    if (
+      prevProps.hideFloatDrift !== this.props.hideFloatDrift &&
+      this.state.result !== null
+    ) {
+      const prefabByNode = this.computeVisiblePrefabs(this.state.result)
+      const overridesByNode = this.computeOverridesByNode(this.state.result)
+      const { changedSubtree } = computeExpansion(
+        this.state.result.roots,
+        new Set([...prefabByNode.keys(), ...overridesByNode.keys()])
+      )
+      this.setState({ prefabByNode, overridesByNode, changedSubtree })
+    }
+  }
+
+  /**
+   * Bundle each PrefabInstance's individual overrides by the target GameObject
+   * fileID in the CURRENT file's expanded namespace. This lets the hierarchy
+   * tree colour every nested node that has an override — rather than only the
+   * PrefabInstance's own root — and lets the Inspector show a node's own
+   * overrides when it's selected. Drift-only overrides are filtered here too
+   * so a node with nothing but Unity's re-serialization wobble isn't marked
+   * changed while the drift filter is on.
+   */
+  /**
+   * Group per-target-GameObject the Prefab overrides the Inspector will show
+   * as their own dedicated rows. Overrides the expansion already baked into
+   * the cloned target document (`applied === true`) are suppressed here —
+   * their effect is already visible via the per-document property diff, so
+   * surfacing them again would only duplicate the change and re-introduce the
+   * "modification indicator on a visually-unchanged node" confusion the
+   * expansion refactor set out to remove.
+   */
+  private computeOverridesByNode(
+    result: IUnitySemanticDiffResult
+  ): Map<UnityFileId, ReadonlyArray<IUnityPrefabOverrideDiff>> {
+    const map = new Map<UnityFileId, IUnityPrefabOverrideDiff[]>()
+    for (const instance of result.prefabInstances) {
+      for (const override of instance.overrides) {
+        const target = override.expandedTargetGameObjectFileId
+        if (target === undefined) {
+          continue
+        }
+        if (override.status === 'unchanged') {
+          continue
+        }
+        if (override.applied === true) {
+          continue
+        }
+        if (this.props.hideFloatDrift && override.trivialFloatDrift === true) {
+          continue
+        }
+        const list = map.get(target) ?? []
+        list.push(override)
+        map.set(target, list)
+      }
+    }
+    return map
+  }
+
+  /**
+   * Build the "changed prefab instance by hierarchy node" map for the current
+   * drift-filter setting: an instance whose only overrides are Unity's
+   * floating-point re-serialization noise is treated as unchanged when the
+   * user has the filter on, so it doesn't tint the hierarchy row red and
+   * doesn't force its subtree to expand.
+   */
+  private computeVisiblePrefabs(
+    result: IUnitySemanticDiffResult
+  ): Map<UnityFileId, IUnityPrefabInstanceDiff> {
+    const map = new Map<UnityFileId, IUnityPrefabInstanceDiff>()
+    for (const instance of result.prefabInstances) {
+      if (instance.nodeFileId === undefined) {
+        continue
+      }
+      if (!this.instanceHasVisibleChange(instance)) {
+        continue
+      }
+      map.set(instance.nodeFileId, instance)
+    }
+    return map
+  }
+
+  private instanceHasVisibleChange(
+    instance: IUnityPrefabInstanceDiff
+  ): boolean {
+    if (instance.status === 'unchanged') {
+      return false
+    }
+    // When every override was baked into the cloned docs, the per-document
+    // property diff is the single source of truth for what changed — for
+    // added/removed instances just as much as for modified ones. Suppressing
+    // the prefab channel in that case avoids the "red node with 'No changes'
+    // in the Inspector" case where a removed direct-instance's overrides all
+    // reduced to values already present via an outer instance (Unity's
+    // XOR-collision layered-override design), so the effective object didn't
+    // change at all. Any override the expansion could not resolve keeps
+    // driving visibility so the hierarchy still flags the instance.
+    return instance.overrides.some(
+      o =>
+        o.status !== 'unchanged' &&
+        o.applied !== true &&
+        (!this.props.hideFloatDrift || o.trivialFloatDrift !== true)
+    )
   }
 
   private currentRequest(): IUnitySemanticDiffRequest {
@@ -234,19 +358,11 @@ export class UnityDiff extends React.Component<
       if (token !== this.loadToken || !this.mounted) {
         return
       }
-      // Changed prefab instances surfaced at their hierarchy node.
-      const prefabByNode = new Map<UnityFileId, IUnityPrefabInstanceDiff>()
-      for (const instance of result.prefabInstances) {
-        if (
-          instance.nodeFileId !== undefined &&
-          instance.status !== 'unchanged'
-        ) {
-          prefabByNode.set(instance.nodeFileId, instance)
-        }
-      }
+      const prefabByNode = this.computeVisiblePrefabs(result)
+      const overridesByNode = this.computeOverridesByNode(result)
       const { expanded, changedSubtree } = computeExpansion(
         result.roots,
-        new Set(prefabByNode.keys())
+        new Set([...prefabByNode.keys(), ...overridesByNode.keys()])
       )
       // The diff returns only the changed documents eagerly; seed the cache with
       // them so changed nodes render instantly, and fetch the rest on selection.
@@ -262,6 +378,7 @@ export class UnityDiff extends React.Component<
         expanded,
         changedSubtree,
         prefabByNode,
+        overridesByNode,
         docCache,
       })
       this.ensureDocumentsLoaded(selectedFileId)
@@ -525,9 +642,11 @@ export class UnityDiff extends React.Component<
         result={result}
         selectedFileId={selectedFileId}
         showUnchanged={this.props.showUnchanged}
+        hideFloatDrift={this.props.hideFloatDrift}
         repository={this.props.repository}
         docCache={this.state.docCache}
-        prefabByNode={this.state.prefabByNode}
+        overridesByNode={this.state.overridesByNode}
+        currentFilePath={this.props.file.path}
         onNavigate={this.navigateTo}
       />
     )
@@ -579,10 +698,22 @@ export class UnityDiff extends React.Component<
     const matches = !searching || node.name.toLowerCase().includes(search)
     const hasChildren = node.children.length > 0
     const isExpanded = searching || this.state.expanded.has(node.fileId)
-    // A changed prefab instance shows as modified at its hierarchy node.
-    const status = this.state.prefabByNode.has(node.fileId)
-      ? 'modified'
-      : node.status
+    // A changed prefab instance surfaces its own status at the hierarchy node
+    // (a removed instance shows the node red, etc.) — but only when the node
+    // itself isn't already carrying a stronger status of its own. Nodes
+    // targeted by individual Prefab overrides tint modified too so the user
+    // can navigate to the exact object whose behaviour changed instead of
+    // hunting through the instance root.
+    const prefabAtNode = this.state.prefabByNode.get(node.fileId)
+    const overridesAtNode = this.state.overridesByNode.get(node.fileId)
+    let status = node.status
+    if (status === 'unchanged') {
+      if (prefabAtNode !== undefined) {
+        status = prefabAtNode.status
+      } else if (overridesAtNode !== undefined && overridesAtNode.length > 0) {
+        status = 'modified'
+      }
+    }
 
     // Only recurse into children when expanded (or searching). This is what
     // keeps a scene with 100k+ nodes renderable.
@@ -635,11 +766,13 @@ export class UnityDiff extends React.Component<
   private renderPrefabInstances(result: IUnitySemanticDiffResult) {
     const search = this.state.search.trim().toLowerCase()
     // Changed instances placed in the hierarchy are shown there; only list those
-    // we couldn't locate a hierarchy node for.
+    // we couldn't locate a hierarchy node for. Drift-only "modifications" are
+    // hidden when the drift filter is on so the fallback doesn't fill up with
+    // noise.
     const instances = result.prefabInstances.filter(
       inst =>
-        inst.status !== 'unchanged' &&
         inst.nodeFileId === undefined &&
+        this.instanceHasVisibleChange(inst) &&
         (search.length === 0 || inst.name.toLowerCase().includes(search))
     )
     if (instances.length === 0) {

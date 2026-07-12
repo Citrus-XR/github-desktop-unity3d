@@ -61,7 +61,23 @@ export interface IUnityDocsRequest {
   readonly fileIds: ReadonlyArray<UnityFileId>
 }
 
-export type IUnityWorkerRequest = IUnityDiffRequest | IUnityDocsRequest
+/**
+ * Preemptive cancellation. The service sends this when a new diff request
+ * supersedes an in-flight one — we set a flag the phased pipeline checks
+ * between async steps and abort instead of finishing wasted work. Cancels
+ * across message boundaries only; a request already deep inside the
+ * synchronous `computeUnityAssetDiff` finishes that phase before honouring.
+ */
+export interface IUnityCancelRequest {
+  readonly id: number
+  readonly kind: 'cancel'
+  readonly cancelId: number
+}
+
+export type IUnityWorkerRequest =
+  | IUnityDiffRequest
+  | IUnityDocsRequest
+  | IUnityCancelRequest
 
 export interface IUnityDiffResponse {
   readonly id: number
@@ -81,10 +97,16 @@ export interface IUnityErrorResponse {
   readonly message: string
 }
 
+export interface IUnityCancelledResponse {
+  readonly id: number
+  readonly kind: 'cancelled'
+}
+
 export type IUnityWorkerResponse =
   | IUnityDiffResponse
   | IUnityDocsResponse
   | IUnityErrorResponse
+  | IUnityCancelledResponse
 
 /** Cap on how many source prefabs we read while expanding one asset. */
 const maxSourcePrefabs = 5000
@@ -331,26 +353,38 @@ const readLayerNames = async (
 
 const handleDiff = async (
   request: IUnityDiffRequest
-): Promise<IUnityDiffResponse> => {
+): Promise<IUnityDiffResponse | IUnityCancelledResponse> => {
   const pathByGuid = new Map(request.pathByGuid)
   const before = parseSide(request.beforePresent, request.beforeContent)
   const after = parseSide(request.afterPresent, request.afterContent)
+  if (cancelledIds.has(request.id)) {
+    return { id: request.id, kind: 'cancelled' }
+  }
   const sources = await buildSourceMap(
     request.repoPath,
     [...before.documents, ...after.documents],
     pathByGuid
   )
+  if (cancelledIds.has(request.id)) {
+    return { id: request.id, kind: 'cancelled' }
+  }
   const { result, expandedBefore, expandedAfter } = computeUnityAssetDiff(
     before,
     after,
     sources,
     guid => pathByGuid.get(guid)
   )
+  if (cancelledIds.has(request.id)) {
+    return { id: request.id, kind: 'cancelled' }
+  }
   cacheDiff(request.requestKey, {
     before: indexById(expandedBefore),
     after: indexById(expandedAfter),
   })
   const layerNames = await readLayerNames(request.repoPath)
+  if (cancelledIds.has(request.id)) {
+    return { id: request.id, kind: 'cancelled' }
+  }
   return { id: request.id, kind: 'diff', result: { ...result, layerNames } }
 }
 
@@ -372,8 +406,17 @@ const handleDocs = (request: IUnityDocsRequest): IUnityDocsResponse => {
 
 const port = parentPort
 
+// Preemption tokens: the service marks a request id here when a newer one
+// supersedes it. `handleDiff` polls between async phases and bails early —
+// avoids finishing wasted work when the user is clicking through files fast.
+const cancelledIds = new Set<number>()
+
 if (port !== null) {
   port.on('message', async (request: IUnityWorkerRequest) => {
+    if (request.kind === 'cancel') {
+      cancelledIds.add(request.cancelId)
+      return
+    }
     try {
       const response =
         request.kind === 'diff'
@@ -387,6 +430,8 @@ if (port !== null) {
         message: e instanceof Error ? e.message : String(e),
       }
       port.postMessage(error)
+    } finally {
+      cancelledIds.delete(request.id)
     }
   })
 }

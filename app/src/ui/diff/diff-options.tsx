@@ -25,6 +25,14 @@ interface IDiffOptionsProps {
   readonly showUnityAsText?: boolean
   readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
 
+  /**
+   * Whether Unity's floating-point re-serialization noise is filtered from the
+   * override list in the semantic Inspector. Only rendered alongside
+   * `showUnityAsText` (the caller passes both together on a Unity diff).
+   */
+  readonly hideUnityFloatDrift?: boolean
+  readonly onHideUnityFloatDriftChanged?: (hide: boolean) => void
+
   /** Called when the user opens the diff options popover */
   readonly onDiffOptionsOpened: () => void
 }
@@ -139,6 +147,12 @@ export class DiffOptions extends React.Component<
     this.props.onShowUnityAsTextChanged?.(true)
   }
 
+  private onHideUnityFloatDriftChanged = (
+    event: React.FormEvent<HTMLInputElement>
+  ) => {
+    this.props.onHideUnityFloatDriftChanged?.(event.currentTarget.checked)
+  }
+
   private renderUnityDiffMode() {
     const { showUnityAsText, onShowUnityAsTextChanged } = this.props
 
@@ -149,8 +163,16 @@ export class DiffOptions extends React.Component<
       return null
     }
 
+    const { hideUnityFloatDrift, onHideUnityFloatDriftChanged } = this.props
+    // The drift toggle only makes sense in semantic mode; hide it when the
+    // user has switched the whole pane to a raw text diff.
+    const showDriftToggle =
+      !showUnityAsText &&
+      hideUnityFloatDrift !== undefined &&
+      onHideUnityFloatDriftChanged !== undefined
+
     return (
-      <fieldset role="radiogroup">
+      <fieldset>
         <legend>Unity diff</legend>
         <RadioButton
           value="Semantic"
@@ -164,6 +186,17 @@ export class DiffOptions extends React.Component<
           label={__DARWIN__ ? 'Raw Diff' : 'Raw diff'}
           onSelected={this.onRawDiffSelected}
         />
+        {showDriftToggle ? (
+          <Checkbox
+            value={hideUnityFloatDrift ? CheckboxValue.On : CheckboxValue.Off}
+            onChange={this.onHideUnityFloatDriftChanged}
+            label={
+              __DARWIN__
+                ? 'Hide Floating-Point Noise'
+                : 'Hide floating-point noise'
+            }
+          />
+        ) : null}
       </fieldset>
     )
   }

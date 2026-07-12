@@ -114,6 +114,31 @@
   font-size: var(--font-size);
   font-weight: var(--font-weight-semibold);
   margin: 0 0 var(--spacing-half) 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing);
+
+  .unity-inspector-title-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Right-aligned "Prefab: X.prefab" tag showing which source prefab the
+  // currently-inspected GameObject was materialized from — matches Unity's
+  // Inspector where an instance of a prefab shows its source at the top.
+  .unity-inspector-title-prefab {
+    flex: 0 1 auto;
+    min-width: 0;
+    color: var(--diff-alt-text-color);
+    font-weight: var(--font-weight-normal);
+    font-size: var(--font-size-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .unity-inspector-meta {
@@ -125,6 +150,26 @@
   border: 1px solid var(--diff-border-color);
   border-radius: var(--border-radius);
   margin-bottom: var(--spacing-half);
+
+  // A component whose status is not "unchanged" advertises the change with a
+  // coloured left border — NOT by tinting the text of the whole box, which
+  // would drag every unchanged row inside along with it. Individual changed
+  // rows still colour their own text via .unity-property.unity-status-*.
+  &.unity-status-added,
+  &.unity-status-removed,
+  &.unity-status-modified {
+    color: inherit;
+    border-left-width: 3px;
+  }
+  &.unity-status-added {
+    border-left-color: var(--color-new);
+  }
+  &.unity-status-removed {
+    border-left-color: var(--color-deleted);
+  }
+  &.unity-status-modified {
+    border-left-color: var(--color-modified);
+  }
 
   .unity-component-title {
     display: flex;
@@ -165,6 +210,118 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    // Hierarchy breadcrumb shown on the right of a Prefab-override section
+    // header, so a user sees "Where in the source prefab does this override
+    // apply?" without needing to hover.
+    .unity-override-path {
+      flex: 0 1 auto;
+      min-width: 0;
+      color: var(--diff-alt-text-color);
+      font-weight: var(--font-weight-normal);
+      font-size: var(--font-size-sm);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
+
+// Divider that separates the resolved-target Prefab override sections from
+// the trailing bucket of unresolved ones (FBX objects with an empty name
+// table, or Unity orphan overrides). Its `title` explains what these are so
+// the user isn't left staring at a wall of raw fileIDs.
+.unity-override-unresolved-divider {
+  color: var(--diff-alt-text-color);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: var(--spacing) 0 var(--spacing-half);
+  padding: 0 var(--spacing-half);
+  border-top: 1px solid var(--diff-border-color);
+  padding-top: var(--spacing-half);
+  cursor: help;
+}
+
+// Prefab-override presentation as a proper hierarchy tree — mirrors Unity's
+// own Overrides panel. Each node is one GameObject in the source prefab's
+// hierarchy; the header expands/collapses to reveal its component-override
+// sections (rendered via the standard .unity-component styles) plus its
+// child GameObjects.
+.unity-override-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.unity-override-node {
+  display: flex;
+  flex-direction: column;
+
+  .unity-override-node-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-quarter);
+    padding: 2px var(--spacing-half);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+
+    &:hover {
+      background: var(--diff-hover-background-color);
+    }
+
+    .unity-override-node-toggle {
+      flex: 0 0 auto;
+      width: 12px;
+      color: var(--diff-alt-text-color);
+    }
+
+    .unity-override-node-name {
+      flex: 0 1 auto;
+      min-width: 0;
+      font-weight: var(--font-weight-semibold);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .unity-override-node-hint {
+      flex: 0 0 auto;
+      margin-left: var(--spacing-half);
+      color: var(--diff-alt-text-color);
+      font-size: var(--font-size-xs);
+      font-style: italic;
+    }
+  }
+
+  // Coloured left border on the header carries the change status (same idea
+  // as `.unity-component`), so a red/yellow tint at a glance tells the user
+  // the subtree contains a change without the text going along for the ride.
+  &.unity-status-added > .unity-override-node-header {
+    border-left: 3px solid var(--color-new);
+  }
+  &.unity-status-removed > .unity-override-node-header {
+    border-left: 3px solid var(--color-deleted);
+  }
+  &.unity-status-modified > .unity-override-node-header {
+    border-left: 3px solid var(--color-modified);
+  }
+
+  &.is-unresolved-root > .unity-override-node-header {
+    color: var(--diff-alt-text-color);
+    font-style: italic;
+    cursor: help;
+  }
+
+  .unity-override-node-section {
+    // Component sections rendered inside a tree node stay flush-left with the
+    // node's indent so their box aligns with the node's header.
+    margin-top: 2px;
+    margin-bottom: 2px;
+    .unity-component {
+      margin-bottom: 2px;
     }
   }
 }
@@ -222,6 +379,31 @@
   .unity-axis-label {
     color: var(--diff-alt-text-color);
     font-size: var(--font-size-xs);
+  }
+}
+
+// A vector-style row (Position/Rotation/Size…) has per-axis colouring; keep
+// its wrapper from tinting unchanged axes with the whole-row status colour.
+// Only the property-key label and the axes that individually changed carry a
+// status tint.
+.unity-property.unity-vector {
+  &.unity-status-added,
+  &.unity-status-removed,
+  &.unity-status-modified {
+    color: inherit;
+
+    > .unity-property-key {
+      color: inherit;
+    }
+  }
+  &.unity-status-added > .unity-property-key {
+    color: var(--color-new);
+  }
+  &.unity-status-removed > .unity-property-key {
+    color: var(--color-deleted);
+  }
+  &.unity-status-modified > .unity-property-key {
+    color: var(--color-modified);
   }
 }
 

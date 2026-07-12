@@ -11,6 +11,10 @@ import { Repository } from '../../models/repository'
 import { Dispatcher } from '../dispatcher'
 import { SeamlessDiffSwitcher } from '../diff/seamless-diff-switcher'
 import { PopupType } from '../../models/popup'
+import {
+  readUnityHideFloatDrift,
+  writeUnityHideFloatDrift,
+} from '../diff/unity-diff-preferences'
 
 interface IChangesProps {
   readonly repository: Repository
@@ -58,13 +62,17 @@ interface IChangesProps {
 
 interface IChangesState {
   readonly showUnityAsText: boolean
+  readonly hideUnityFloatDrift: boolean
 }
 
 export class Changes extends React.Component<IChangesProps, IChangesState> {
   public constructor(props: IChangesProps) {
     super(props)
 
-    this.state = { showUnityAsText: false }
+    this.state = {
+      showUnityAsText: false,
+      hideUnityFloatDrift: readUnityHideFloatDrift(),
+    }
   }
 
   /**
@@ -122,6 +130,8 @@ export class Changes extends React.Component<IChangesProps, IChangesState> {
           onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
           showUnityAsText={this.state.showUnityAsText}
           onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
+          hideUnityFloatDrift={this.state.hideUnityFloatDrift}
+          onHideUnityFloatDriftChanged={this.onHideUnityFloatDriftChanged}
           onDiffOptionsOpened={this.props.onDiffOptionsOpened}
         />
 
@@ -145,6 +155,7 @@ export class Changes extends React.Component<IChangesProps, IChangesState> {
           onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
           showUnityAsText={this.state.showUnityAsText}
           onShowUnityAsTextChanged={this.onShowUnityAsTextChanged}
+          hideUnityFloatDrift={this.state.hideUnityFloatDrift}
         />
       </div>
     )
@@ -163,5 +174,10 @@ export class Changes extends React.Component<IChangesProps, IChangesState> {
 
   private onShowUnityAsTextChanged = (showUnityAsText: boolean) => {
     this.setState({ showUnityAsText })
+  }
+
+  private onHideUnityFloatDriftChanged = (hideUnityFloatDrift: boolean) => {
+    writeUnityHideFloatDrift(hideUnityFloatDrift)
+    this.setState({ hideUnityFloatDrift })
   }
 }

@@ -63,15 +63,82 @@ export interface IUnityGameObjectDiffNode {
   readonly children: ReadonlyArray<IUnityGameObjectDiffNode>
 }
 
-/** Diff of a single prefab override (one `m_Modifications` entry). */
+/** What kind of document a prefab override targets. */
+export type UnityPrefabOverrideTargetKind = 'GameObject' | 'Component'
+
+/**
+ * Diff of a single prefab override (one `m_Modifications` entry). Enriched with
+ * the source-prefab context (which GameObject / component this override applies
+ * to and where in the source hierarchy it lives) so the Inspector can group the
+ * flat modification stream the way Unity's own Overrides panel does.
+ *
+ * The context fields are all optional because a target may sit deep inside a
+ * nested-prefab variant we could not fully resolve; the Inspector renders those
+ * targets under an "Unresolved" bucket rather than dropping them.
+ */
 export interface IUnityPrefabOverrideDiff {
   readonly targetFileId: UnityFileId
+  /** GUID of the source prefab the target fileID belongs to. */
+  readonly targetGuid?: string
   /** Friendly label for the overridden object (filled from the source prefab). */
   readonly targetLabel: string
   readonly propertyPath: string
   readonly status: UnityChangeStatus
-  readonly before: string | null
-  readonly after: string | null
+  readonly before: UnityPropertyValue | null
+  readonly after: UnityPropertyValue | null
+  /** Kind of the target document. */
+  readonly targetKind?: UnityPrefabOverrideTargetKind
+  /**
+   * Source-prefab fileID of the GameObject that owns the target (self if the
+   * target is a GameObject). Drives grouping in the Inspector.
+   */
+  readonly targetGameObjectFileId?: UnityFileId
+  /**
+   * Slash-separated hierarchy path of the owning GameObject within the source
+   * prefab (e.g. `Root/Gimmick/SignBoard`).
+   */
+  readonly targetGameObjectPath?: string
+  /** Short display name of the owning GameObject (its last path segment). */
+  readonly targetGameObjectName?: string
+  /**
+   * Component type when `targetKind === 'Component'`. For a MonoBehaviour this
+   * is the resolved script file basename; otherwise the class name.
+   */
+  readonly targetComponentType?: string
+  /**
+   * The target GameObject's fileID in the CURRENT file's expanded namespace —
+   * i.e. the id it takes on inside the merged hierarchy tree. Set when the
+   * override could be traced through the enclosing PrefabInstance's expansion
+   * (whether via a stripped placeholder or XOR remap). Used by the Inspector
+   * to attach each override to the specific node in the main hierarchy it
+   * affects, rather than lumping every override onto the instance root.
+   */
+  readonly expandedTargetGameObjectFileId?: UnityFileId
+  /**
+   * The target OBJECT'S own fileID in the CURRENT file's expanded namespace —
+   * points at the specific GameObject or component the override applies to
+   * (whereas `expandedTargetGameObjectFileId` always points at the owning
+   * GameObject). Lets the Inspector fold each override into its target
+   * component's section rather than piling all of them into a separate top
+   * block.
+   */
+  readonly expandedTargetFileId?: UnityFileId
+  /**
+   * True when the before/after are scalar numbers that differ only by
+   * floating-point re-serialization noise (relative delta below 1e-5). The
+   * Inspector groups these with unchanged rows behind the "Show unchanged"
+   * toggle so Unity's constant quaternion wobble doesn't drown a real diff.
+   */
+  readonly trivialFloatDrift?: boolean
+  /**
+   * True when the expansion pass baked this override into the cloned target
+   * document on at least one side. The change is already visible via the
+   * per-document property diff, so the Inspector suppresses this override
+   * row to avoid duplicating information. Overrides that could not be
+   * applied (target/property not resolvable in the expansion) stay `false`
+   * and surface under the Inspector's "Unresolved overrides" panel.
+   */
+  readonly applied?: boolean
 }
 
 /** Diff of a prefab instance (a `!u!1001 PrefabInstance` document). */
@@ -110,6 +177,15 @@ export interface IUnitySemanticDiffResult {
   /** Per prefab-instance override diffs (the `!u!1001` documents). */
   readonly prefabInstances: ReadonlyArray<IUnityPrefabInstanceDiff>
   readonly resolvedGuids: ReadonlyArray<IUnityResolvedGuid>
+  /**
+   * Per-hierarchy-node origin: each entry maps a GameObject/Transform fileID
+   * (in the expanded merged tree's namespace) to the repository path of the
+   * source prefab it was materialized from via a nested PrefabInstance. Nodes
+   * absent from this list are native to the file being diffed.
+   */
+  readonly sourcePrefabByExpandedNode?: ReadonlyArray<
+    readonly [UnityFileId, string]
+  >
   /** Project layer names indexed by layer number (from TagManager.asset). */
   readonly layerNames?: ReadonlyArray<string>
   readonly warnings: ReadonlyArray<string>

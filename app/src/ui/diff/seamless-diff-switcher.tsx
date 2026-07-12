@@ -123,6 +123,13 @@ interface ISeamlessDiffSwitcherProps {
   // Used in getDerivedStateFromProps, no-unused-prop-types doesn't know that
   // eslint-disable-next-line react/no-unused-prop-types
   readonly onShowUnityAsTextChanged?: (showUnityAsText: boolean) => void
+
+  /**
+   * Whether Unity's floating-point re-serialization noise is filtered from the
+   * override list in the Inspector. Default `true` at the owning component.
+   */
+  // eslint-disable-next-line react/no-unused-prop-types
+  readonly hideUnityFloatDrift?: boolean
 }
 
 interface ISeamlessDiffSwitcherState {
@@ -361,6 +368,7 @@ export class SeamlessDiffSwitcher extends React.Component<
       onHideWhitespaceInDiffChanged,
       showUnityAsText,
       onShowUnityAsTextChanged,
+      hideUnityFloatDrift,
     } = this.state.propSnapshot
 
     const className = classNames('seamless-diff-switcher', {
@@ -403,6 +411,7 @@ export class SeamlessDiffSwitcher extends React.Component<
             onShowUnityAsTextChanged={
               isLoadingDiff ? noop : onShowUnityAsTextChanged
             }
+            hideUnityFloatDrift={hideUnityFloatDrift}
           />
         ) : null}
         {loadingIndicator}
