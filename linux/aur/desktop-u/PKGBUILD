@@ -1,11 +1,17 @@
 # Maintainer: Citrus-XR / NekoShatoo <nazimishatoo@gmail.com>
 pkgname=desktop-u
 pkgver=3.5.13.beta2
-pkgrel=1
+pkgrel=2
 pkgdesc="Simple collaboration from your desktop, Unity fork (from source)"
 arch=('x86_64')
 url="https://github.com/Citrus-XR/github-desktop-unity3d"
 license=('MIT')
+# Skip the debug split package: it would ship debug symbols keyed by Electron's
+# own build-ids, which collide with shiftkey's `github-desktop-bin-debug`
+# whenever we happen to bundle the same Electron version (byte-identical
+# binaries → same build-ids). Coexistence with `github-desktop-bin` is a
+# stated goal, so drop the -debug package rather than fight the collision.
+options=('!debug')
 depends=(
   'gtk3'
   'libsecret'
@@ -30,7 +36,7 @@ makedepends=(
   'python'
 )
 source=(
-  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=89472d07535d362d7d18800489a2d2dff1596671"
+  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=ed94dddf0a5ac6f595f8b5556fc8a7ae8915f72c"
   "https://nodejs.org/dist/v${_nodever}/node-v${_nodever}-linux-x64.tar.xz"
 )
 sha256sums=(
