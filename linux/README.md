@@ -1,11 +1,16 @@
 # Linux packaging
 
 The fork ships an AUR-compatible PKGBUILD under `linux/aur/desktop-u/`
-that clones this repo at a pinned commit, builds it with Node 24, and
-installs the Electron tree to `/opt/desktop-u/` with a `.desktop`
-launcher and hicolor icons. It coexists with shiftkey's
-`github-desktop-bin` (different install path, different bundle name,
-different `x-github-desktop-u://` URL scheme).
+that clones this repo, builds it with Node 24, and installs the
+Electron tree to `/opt/desktop-u/` with a `.desktop` launcher and
+hicolor icons. It coexists with shiftkey's `github-desktop-bin`
+(different install path, different bundle name, different
+`x-github-desktop-u://` URL scheme).
+
+The PKGBUILD tracks `origin/development`'s HEAD via a `pkgver()`
+function that computes an Arch-legal version from `git describe`, so
+`makepkg -si` on the same file picks up new commits as they land
+upstream. No SHA to bump.
 
 ## Install
 
@@ -22,6 +27,11 @@ webpack + electron-packager). Produces
 `desktop-u-<pkgver>-<pkgrel>-x86_64.pkg.tar.zst` and hands it to
 pacman.
 
+Re-run the same command later to upgrade — makepkg re-fetches the
+tracked branch, `pkgver()` recomputes to something like
+`3.6.3.beta2.r62.g<newsha>`, and pacman upgrades naturally. If the
+tracked branch is unchanged pacman reports "up to date".
+
 After install, launch from the KDE/GNOME menu ("GitHub Desktop U",
 cyan **U** badge on the Octicat) or via `desktop-u` on the command
 line.
@@ -32,24 +42,36 @@ line.
 yay -S desktop-u
 ```
 
-## Cut a new release of the PKGBUILD
+## Updating the PKGBUILD itself
 
-For any commit worth handing to users, bump the pinned SHA in
-`linux/aur/desktop-u/PKGBUILD`:
+Bump `pkgrel` only when the PKGBUILD (build recipe, dependency list,
+install layout) changes without a matching upstream commit — pacman
+uses `pkgrel` as the tiebreaker within the same `pkgver`. When a new
+upstream commit lands, `pkgver()` recomputes a fresh version by
+itself and `pkgrel` stays where it is; leave it alone.
 
-1. Push the change to `origin/development`, note the resulting SHA.
-2. Edit `PKGBUILD`:
-   - `source=(...)#commit=<sha>` — pin the new commit
-   - `pkgver` — bump only if `app/package.json`'s version changed
-     (AUR `pkgver` disallows `-`; rewrite as `.`, e.g. `3.5.13-beta2`
-     → `3.5.13.beta2`)
-   - `pkgrel` — reset to `1` when `pkgver` changes; increment when
-     only the PKGBUILD itself changes at the same `pkgver`
-3. Regenerate `.SRCINFO`:
-   ```sh
-   makepkg -D linux/aur/desktop-u --printsrcinfo > linux/aur/desktop-u/.SRCINFO
-   ```
-4. Commit `PKGBUILD` + `.SRCINFO`.
+To temporarily build a specific commit (bisect, reproducing a bug on
+an older revision), swap the branch fragment for a commit fragment in
+`source=`:
+
+```
+source=(
+  "git+https://github.com/Citrus-XR/github-desktop-unity3d.git#commit=<sha>"
+  ...
+)
+```
+
+Regenerate `.SRCINFO` after any PKGBUILD edit so AUR helpers see the
+new metadata:
+
+```sh
+cd linux/aur/desktop-u
+makepkg --printsrcinfo > .SRCINFO
+```
+
+Commit `PKGBUILD` + `.SRCINFO` together. `makepkg` also rewrites the
+top-level `pkgver=` field in `PKGBUILD` during a build — that edit is
+throwaway state, don't commit it.
 
 ## Push to AUR
 
@@ -70,8 +92,11 @@ git commit -m "…"
 git push
 ```
 
-Subsequent updates: repeat the copy + commit + push. Users pick it up
-via `yay -Syu` (or any other AUR helper).
+Subsequent updates: repeat the copy + commit + push only when the
+PKGBUILD itself changes (build steps, deps, install layout). Users
+still get new upstream code via the branch-tracked `source=` on the
+next `yay -Syu` even without a new AUR push, but their PKGBUILD copy
+stays in sync only if we push updates.
 
 ## Why we bundle Node 24 instead of using system `nodejs`
 
@@ -83,6 +108,20 @@ silently with no output and produces no app tree. The upstream
 `.nvmrc` pins Node 24.15.0 to avoid this; the PKGBUILD downloads that
 tarball via the `source=` array and prepends its `bin/` to PATH for
 `prepare()` and `build()`. The user's system `nodejs` is not touched.
+
+## Why there is no `-debug` split package
+
+`options=('!strip')` in the PKGBUILD disables stripping. Two reasons:
+
+1. Electron ships its binaries already stripped upstream, so a
+   `-debug` split would only capture residual symbols in libraries
+   like `libffmpeg`, `chrome-sandbox`, etc. Every one of those is
+   keyed by an Electron build-id that shiftkey's
+   `github-desktop-bin-debug` also carries — the two `-debug`
+   packages then collide file-for-file whenever we happen to bundle
+   the same Electron version, and pacman refuses to install both.
+2. Our own JS lives in text form under `/opt/desktop-u/resources/`,
+   which no separate symbol package would help debug anyway.
 
 ## Skipping Playwright's ffmpeg download
 
