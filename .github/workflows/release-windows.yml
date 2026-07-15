@@ -1,0 +1,105 @@
+name: Release Windows
+
+# Build and publish a Windows installer to a GitHub Release whenever a
+# `release-*` tag is pushed. Matches the tag pattern the fork's PKGBUILD
+# already uses (`git describe --match 'release-*'`), so tagging is the one
+# gesture that produces both a Windows install and a fresh Arch upgrade.
+#
+# Manual runs (workflow_dispatch) build the same artifacts but skip the
+# Release step — useful for smoke-testing the pipeline without shipping.
+
+on:
+  push:
+    tags:
+      - 'release-*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  NODE_VERSION: 24.15.0
+
+jobs:
+  build:
+    name: Build Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-ci-environment
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          arch: x64
+
+      - name: Run desktop-trampoline tests
+        shell: bash
+        run: |
+          cd vendor/desktop-trampoline
+          yarn install
+          yarn test
+
+      - name: Build production app
+        run: yarn build:prod
+        env:
+          # DESKTOP_OAUTH_CLIENT_* are optional. Without them GitHub sign-in
+          # inside the app won't complete, but the installer still builds.
+          DESKTOP_OAUTH_CLIENT_ID: ${{ secrets.DESKTOP_OAUTH_CLIENT_ID }}
+          DESKTOP_OAUTH_CLIENT_SECRET: ${{ secrets.DESKTOP_OAUTH_CLIENT_SECRET }}
+          npm_config_arch: x64
+          TARGET_ARCH: x64
+
+      - name: Package production app
+        run: yarn package
+        env:
+          npm_config_arch: x64
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64
+          path: |
+            dist/GitHubDesktopUSetup-x64.exe
+            dist/GitHubDesktopUSetup-x64.msi
+            dist/GitHub Desktop U-x64.zip
+            dist/GitHubDesktopU-*.nupkg
+            dist/bundle-size.json
+            dist/bundle-hash.json
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    # Only publish when the workflow was triggered by a release-* tag push.
+    # workflow_dispatch runs still build (above) so the pipeline can be
+    # smoke-tested without shipping anything.
+    if: startsWith(github.ref, 'refs/tags/release-')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v6
+        with:
+          name: windows-x64
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Uses the pushed tag name as the release tag. `name` defaults to
+          # the tag too, so a `release-3.7.0` tag becomes a `release-3.7.0`
+          # release with the same title.
+          files: |
+            artifacts/GitHubDesktopUSetup-x64.exe
+            artifacts/GitHubDesktopUSetup-x64.msi
+            artifacts/GitHub Desktop U-x64.zip
+          fail_on_unmatched_files: true
+          # Everything shipped from the fork is a personal build — no
+          # official channel — so publish as prerelease by default.
+          prerelease: true
+          generate_release_notes: true
