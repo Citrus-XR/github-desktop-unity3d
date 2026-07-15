@@ -585,3 +585,594 @@
 .unity-value-after {
   font-weight: var(--font-weight-semibold);
 }
+
+// AnimationClip friendly viewer -----------------------------------------------
+
+.unity-anim-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing);
+  height: 100%;
+}
+
+.unity-anim-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing);
+  flex-wrap: wrap;
+}
+
+.unity-anim-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing);
+  color: var(--text-secondary-color);
+  font-size: var(--font-size-sm);
+
+  b {
+    color: var(--text-color);
+  }
+}
+
+.unity-anim-header-change {
+  padding: 0 var(--spacing-half);
+  border-radius: var(--border-radius);
+  background: var(--secondary-background-color);
+
+  &.unity-status-modified {
+    color: var(--color-modified);
+  }
+}
+
+.unity-anim-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--box-border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+
+  button {
+    border: none;
+    background: transparent;
+    padding: var(--spacing-half) var(--spacing);
+    cursor: pointer;
+    color: var(--text-color);
+    font: inherit;
+
+    &:hover {
+      background: var(--secondary-background-color);
+    }
+
+    &.is-active {
+      background: var(--button-background);
+      color: var(--button-text-color);
+    }
+  }
+
+  button + button {
+    border-left: 1px solid var(--box-border-color);
+  }
+}
+
+.unity-anim-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-half);
+  flex-shrink: 0;
+}
+
+.unity-anim-zoom-group {
+  display: inline-flex;
+  border: 1px solid var(--box-border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+
+  .unity-anim-icon-btn {
+    border: none;
+    background: transparent;
+    padding: var(--spacing-half) var(--spacing);
+    cursor: pointer;
+    color: var(--text-color);
+    font: inherit;
+    line-height: 1;
+    min-width: 22px;
+
+    &:hover {
+      background: var(--secondary-background-color);
+    }
+  }
+
+  .unity-anim-icon-btn + .unity-anim-icon-btn {
+    border-left: 1px solid var(--box-border-color);
+  }
+}
+
+.unity-anim-reset {
+  border: 1px solid var(--box-border-color);
+  background: transparent;
+  border-radius: var(--border-radius);
+  padding: var(--spacing-half) var(--spacing);
+  cursor: pointer;
+  color: var(--text-color);
+  font: inherit;
+
+  &:hover {
+    background: var(--secondary-background-color);
+  }
+}
+
+.unity-anim-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-half);
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+  // Positioning context for the absolute playhead overlay above every lane.
+  position: relative;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.unity-anim-ruler-wrap {
+  position: sticky;
+  top: 14px; // sit just below the panbar
+  z-index: 1;
+  background: var(--background-color);
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--box-border-color);
+}
+
+.unity-anim-ruler {
+  display: block;
+
+  .unity-anim-ruler-baseline {
+    stroke: var(--box-border-color);
+    stroke-width: 1;
+  }
+
+  .unity-anim-ruler-tick line {
+    stroke: var(--text-secondary-color);
+    stroke-width: 1;
+  }
+
+  .unity-anim-ruler-label {
+    fill: var(--text-secondary-color);
+    font-size: 10px;
+    font-family: var(--font-family-sans);
+    dominant-baseline: hanging;
+  }
+}
+
+.unity-anim-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing);
+}
+
+.unity-anim-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.unity-anim-group-path {
+  font-family: var(--font-family-monospace);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary-color);
+  padding: var(--spacing-half) 0;
+  border-bottom: 1px solid var(--box-border-color);
+}
+
+.unity-anim-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.unity-anim-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-half) 0;
+  border-bottom: 1px dashed var(--box-border-color);
+
+  &.unity-status-added {
+    border-left: 2px solid var(--color-new);
+    padding-left: var(--spacing-half);
+  }
+  &.unity-status-removed {
+    border-left: 2px solid var(--color-deleted);
+    padding-left: var(--spacing-half);
+  }
+  &.unity-status-modified {
+    border-left: 2px solid var(--color-modified);
+    padding-left: var(--spacing-half);
+  }
+}
+
+.unity-anim-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-half);
+  font-size: var(--font-size-sm);
+}
+
+.unity-anim-pill {
+  text-transform: lowercase;
+  font-size: var(--font-size-xs);
+  padding: 0 var(--spacing-half);
+  border-radius: var(--border-radius);
+  background: var(--secondary-background-color);
+
+  &.unity-status-added {
+    color: var(--color-new);
+  }
+  &.unity-status-removed {
+    color: var(--color-deleted);
+  }
+  &.unity-status-modified {
+    color: var(--color-modified);
+  }
+  &.unity-status-unchanged {
+    color: var(--text-secondary-color);
+  }
+}
+
+.unity-anim-attr {
+  font-family: var(--font-family-monospace);
+  color: var(--text-color);
+}
+
+.unity-anim-summary {
+  margin-left: auto;
+  color: var(--text-secondary-color);
+  font-size: var(--font-size-xs);
+}
+
+.unity-anim-current-value {
+  font-family: var(--font-family-monospace);
+  color: var(--text-color);
+  font-size: var(--font-size-sm);
+  padding: 0 var(--spacing-half);
+}
+
+// Pan-bar (scrubber above the ruler): the whole track is the base clip; the
+// thumb is the current viewport. Drag the thumb to pan.
+.unity-anim-panbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--background-color);
+  padding: 2px 0;
+}
+
+.unity-anim-panbar {
+  position: relative;
+  height: 10px;
+  background: var(--secondary-background-color);
+  border: 1px solid var(--box-border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+// Fight the `.unity-diff *` global rule (specificity 0,1,1) that re-enables
+// text selection on every descendant of the Unity diff pane — otherwise
+// dragging the panbar highlights ruler tick labels ("4.0s", "4.5s", …) and
+// lane baselines that the pointer sweeps across. The whole timeline area is
+// a canvas: values are copied via the diamond click-to-copy, not selection.
+.unity-diff .unity-anim-timeline,
+.unity-diff .unity-anim-timeline * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.unity-anim-panbar-thumb {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  min-width: 8px;
+  // Theme-aware dark thumb: text color (dark on light theme, light on dark)
+  // at 35% alpha reads as a dark gray on light, medium gray on dark, and
+  // never blends into the track like the theme accent did.
+  background: var(--text-color);
+  opacity: 0.35;
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+
+  &:hover {
+    opacity: 0.5;
+  }
+
+  &.is-dragging {
+    opacity: 0.65;
+    cursor: grabbing;
+  }
+}
+
+// Move the ruler-wrap below the panbar-wrap in the stacking / sticky order.
+// Both are sticky; the panbar is on top (z-index: 2) and the ruler right below.
+
+// Chart primitives — the SVG defers to currentColor for stroke/fill so the
+// per-status classes below control colouring uniformly for lane diamonds,
+// bridges, curve lines, and per-key dots.
+.unity-anim-lane,
+.unity-anim-chart {
+  display: block;
+  color: var(--text-secondary-color);
+}
+
+.unity-anim-lane-baseline {
+  color: var(--box-border-color);
+  stroke: currentColor;
+}
+
+.unity-anim-line-before {
+  opacity: 0.55;
+  stroke-dasharray: 3 2;
+  color: var(--color-deleted);
+}
+
+.unity-anim-line-after {
+  color: var(--text-color);
+
+  .unity-anim-curve-added & {
+    color: var(--color-new);
+  }
+  .unity-anim-curve-removed & {
+    color: var(--color-deleted);
+  }
+  .unity-anim-curve-modified & {
+    color: var(--color-modified);
+  }
+}
+
+.unity-anim-key {
+  &.unity-anim-key-added {
+    color: var(--color-new);
+  }
+  &.unity-anim-key-removed {
+    color: var(--color-deleted);
+  }
+  &.unity-anim-key-modified {
+    color: var(--color-modified);
+  }
+  &.unity-anim-key-unchanged {
+    color: var(--text-secondary-color);
+  }
+}
+
+.unity-anim-bridge {
+  opacity: 0.55;
+}
+
+// ParticleSystem / ParticleSystemRenderer — nested module boxes reuse the
+// existing `.unity-component` chrome with tighter header spacing so the two
+// nesting levels are visually distinct.
+.unity-component.is-nested {
+  margin: var(--spacing-quarter) var(--spacing-half);
+
+  .unity-component-title {
+    padding: var(--spacing-quarter) var(--spacing-half);
+    font-size: var(--font-size-sm);
+    background: transparent;
+
+    &:hover {
+      background: var(--diff-hover-background-color);
+    }
+  }
+}
+
+.unity-ps-header {
+  margin-bottom: var(--spacing-half);
+}
+
+.unity-ps-modules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-quarter);
+}
+
+// Color swatch used inline in property values (start color, gradient min/max,
+// standalone Color fields). Checkerboard peeks through so alpha reads at a
+// glance without needing to hover.
+.unity-color-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 12px;
+  vertical-align: middle;
+  border: 1px solid var(--diff-border-color);
+  border-radius: 2px;
+  background-image:
+    linear-gradient(45deg, var(--diff-border-color) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--diff-border-color) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--diff-border-color) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--diff-border-color) 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 0 3px, 3px -3px, -3px 0;
+}
+
+// MinMaxGradient strip: color bar on top, alpha bar (grayscale) below. Same
+// checkerboard peek behind the color bar so semi-transparent gradients
+// don't wash out into the theme background.
+.unity-gradient-strip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  vertical-align: middle;
+  width: 96px;
+  border: 1px solid var(--diff-border-color);
+  border-radius: 2px;
+  overflow: hidden;
+
+  &.is-empty {
+    height: 12px;
+    background: var(--box-alt-background-color);
+  }
+
+  .unity-gradient-color {
+    height: 12px;
+    // The actual gradient is set via inline `background` on this element;
+    // the alpha bar below carries the transparency, so the color bar itself
+    // is always opaque RGB and doesn't need a checkerboard.
+  }
+
+  .unity-gradient-alpha {
+    height: 4px;
+  }
+}
+
+// MinMaxCurve display: mode label + sparkline sit inline. Diff mode wraps
+// both sides with an arrow.
+.unity-mmcurve {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-quarter);
+  vertical-align: middle;
+}
+
+.unity-mmcurve-mode {
+  color: var(--diff-alt-text-color);
+  font-size: var(--font-size-sm);
+}
+
+.unity-mmcurve-empty {
+  color: var(--diff-alt-text-color);
+}
+
+.unity-mmcurve-spark {
+  color: var(--text-color);
+  vertical-align: middle;
+}
+
+.unity-mmcurve-diff,
+.unity-mmgradient-diff,
+.unity-color-diff,
+.unity-enum-diff {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-quarter);
+  flex-wrap: wrap;
+}
+
+.unity-mmcurve-arrow,
+.unity-mmgradient-arrow,
+.unity-color-arrow {
+  color: var(--diff-alt-text-color);
+}
+
+.unity-mmgradient {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-quarter);
+  vertical-align: middle;
+}
+
+.unity-mmgradient-mode {
+  color: var(--diff-alt-text-color);
+  font-size: var(--font-size-sm);
+}
+
+.unity-mmparam {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--spacing-quarter);
+  vertical-align: middle;
+}
+
+.unity-mmparam-mode {
+  color: var(--diff-alt-text-color);
+  font-size: var(--font-size-sm);
+}
+
+.unity-mmparam-empty {
+  color: var(--diff-alt-text-color);
+}
+
+.unity-mmparam-diff {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-quarter);
+  flex-wrap: wrap;
+}
+
+.unity-mmparam-arrow {
+  color: var(--diff-alt-text-color);
+}
+
+// Playhead (vertical time-probe line across ruler + every lane/chart) and its
+// label on the ruler. Dashed so it's readable atop existing per-status colors.
+.unity-anim-playhead {
+  stroke: var(--color-modified, #d4a017);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+
+// The full-height playhead line rendered as a single absolutely-positioned
+// overlay on top of every lane. Moved out of each SVG so playhead updates
+// don't re-render every lane's diamonds — huge perf win when scrubbing.
+.unity-anim-playhead-overlay {
+  position: absolute;
+  top: 28px; // clear the panbar (~12) + gap (~2) — sits from ruler down
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--color-modified, #d4a017);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.unity-anim-playhead-label {
+  fill: var(--color-modified, #d4a017);
+  font-size: 10px;
+  font-family: var(--font-family-monospace);
+  pointer-events: none;
+}
+
+// Diamonds / dots grow a hair on hover so it's easy to hit. `pointer-events`
+// is on the SVG element itself; the native <title> child gives us the tooltip
+// without any React portal machinery.
+.unity-anim-key-hit {
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(1.4);
+  }
+}
+
+// Ephemeral toast shown after a diamond click (or any clipboard action from
+// this inspector). Fades on its own via a timer in the component.
+.unity-anim-toast {
+  position: absolute;
+  bottom: var(--spacing);
+  right: var(--spacing);
+  background: var(--overlay-background-color, rgba(0, 0, 0, 0.85));
+  color: var(--overlay-text-color, #fff);
+  padding: var(--spacing-half) var(--spacing);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-sm);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 4;
+}
+
+// The inspector needs a positioning context for the absolute-positioned toast.
+.unity-anim-inspector {
+  position: relative;
+}
+
+// Hierarchy tree becomes keyboard-focusable so arrow keys can walk it. Kill
+// the default browser focus ring since the currently-selected row is already
+// distinctly styled — a second dashed outline around the whole panel is
+// visual noise.
+.unity-hierarchy-tree {
+  outline: none;
+}

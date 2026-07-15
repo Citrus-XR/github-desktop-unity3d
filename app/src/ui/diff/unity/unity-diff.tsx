@@ -172,6 +172,15 @@ export class UnityDiff extends React.Component<
     }
     if (prevState.selectedFileId !== this.state.selectedFileId) {
       this.ensureDocumentsLoaded(this.state.selectedFileId)
+      // Keyboard nav can walk selection off-screen — scroll into view. Uses
+      // a data attribute so we don't have to plumb a ref through every row.
+      const id = this.state.selectedFileId
+      if (id !== null) {
+        const el = document.querySelector<HTMLElement>(
+          `.unity-hierarchy-tree [data-fileid="${CSS.escape(id)}"]`
+        )
+        el?.scrollIntoView({ block: 'nearest' })
+      }
     }
     // Toggling the drift filter shifts which prefab instances count as
     // "changed", which flows into the hierarchy tree colours and the
@@ -507,6 +516,149 @@ export class UnityDiff extends React.Component<
     this.setState({ expanded })
   }
 
+  /**
+   * Flatten the currently-visible hierarchy in DFS order, honoring the same
+   * expansion / show-unchanged / search filters the renderer uses. Returns
+   * `{fileId, parentId, hasVisibleChildren, expanded}` per row so the keyboard
+   * handler can move / expand / collapse / step-out without a second walk.
+   */
+  private flattenVisibleHierarchy(): ReadonlyArray<{
+    readonly fileId: UnityFileId
+    readonly parentId: UnityFileId | null
+    readonly hasVisibleChildren: boolean
+    readonly expanded: boolean
+  }> {
+    const result = this.state.result
+    if (result === null || result.roots.length === 0) {
+      return []
+    }
+    const search = this.state.search.trim().toLowerCase()
+    const searching = search.length > 0
+    const showUnchanged = this.props.showUnchanged
+    const out: {
+      fileId: UnityFileId
+      parentId: UnityFileId | null
+      hasVisibleChildren: boolean
+      expanded: boolean
+    }[] = []
+
+    const visit = (
+      node: IUnityGameObjectDiffNode,
+      parentId: UnityFileId | null
+    ): boolean => {
+      // Hide unchanged subtrees unless asked, or unless searching.
+      if (!searching && !showUnchanged && !this.state.changedSubtree.has(node.fileId)) {
+        return false
+      }
+      const matches = !searching || node.name.toLowerCase().includes(search)
+      const isExpanded = searching || this.state.expanded.has(node.fileId)
+      // Reserve this row's slot, filled in after we know its children count.
+      const slot = out.length
+      out.push({
+        fileId: node.fileId,
+        parentId,
+        hasVisibleChildren: false,
+        expanded: isExpanded,
+      })
+      let visibleChildren = 0
+      if (node.children.length > 0 && (isExpanded || searching)) {
+        for (const child of node.children) {
+          if (visit(child, node.fileId)) {
+            visibleChildren++
+          }
+        }
+      }
+      // Search filter: drop leaves that don't match if none of their children
+      // matched either.
+      if (searching && !matches && visibleChildren === 0) {
+        out.length = slot
+        return false
+      }
+      out[slot] = {
+        ...out[slot],
+        hasVisibleChildren: visibleChildren > 0 || (!isExpanded && node.children.length > 0),
+      }
+      return true
+    }
+
+    for (const root of result.roots) {
+      visit(root, null)
+    }
+    return out
+  }
+
+  /**
+   * Unity-style arrow-key navigation on the hierarchy tree.
+   *   ↑ / ↓ — previous / next visible node.
+   *   → — expand a collapsed node; on an expanded (or leaf) node, step into
+   *        the first visible child.
+   *   ← — collapse an expanded node; on a collapsed (or leaf) node, step out
+   *        to the parent.
+   *   Enter / Space — reserved for future (e.g. toggle expand) — currently no-op.
+   */
+  private onHierarchyKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const key = e.key
+    if (
+      key !== 'ArrowUp' &&
+      key !== 'ArrowDown' &&
+      key !== 'ArrowLeft' &&
+      key !== 'ArrowRight'
+    ) {
+      return
+    }
+    const flat = this.flattenVisibleHierarchy()
+    if (flat.length === 0) {
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    const selectedId = this.state.selectedFileId
+    const currentIndex = selectedId === null
+      ? -1
+      : flat.findIndex(r => r.fileId === selectedId)
+
+    if (key === 'ArrowDown') {
+      const next = currentIndex < 0 ? 0 : Math.min(flat.length - 1, currentIndex + 1)
+      this.setState({ selectedFileId: flat[next].fileId })
+      return
+    }
+    if (key === 'ArrowUp') {
+      const next = currentIndex <= 0 ? 0 : currentIndex - 1
+      this.setState({ selectedFileId: flat[next].fileId })
+      return
+    }
+    if (currentIndex < 0) {
+      // No selection yet — arrow-right/left has nothing to act on beyond down.
+      this.setState({ selectedFileId: flat[0].fileId })
+      return
+    }
+    const row = flat[currentIndex]
+    if (key === 'ArrowRight') {
+      // Collapsed with children → expand. Already-expanded or leaf → step in.
+      if (row.hasVisibleChildren && !row.expanded) {
+        const expanded = new Set(this.state.expanded)
+        expanded.add(row.fileId)
+        this.setState({ expanded })
+        return
+      }
+      const nextRow = flat[currentIndex + 1]
+      if (nextRow !== undefined && nextRow.parentId === row.fileId) {
+        this.setState({ selectedFileId: nextRow.fileId })
+      }
+      return
+    }
+    // ArrowLeft: collapse if expanded, else step out to parent.
+    if (row.expanded && row.hasVisibleChildren) {
+      const expanded = new Set(this.state.expanded)
+      expanded.delete(row.fileId)
+      this.setState({ expanded })
+      return
+    }
+    if (row.parentId !== null) {
+      this.setState({ selectedFileId: row.parentId })
+    }
+  }
+
   private onSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     this.setState({ search: e.currentTarget.value })
   }
@@ -620,7 +772,11 @@ export class UnityDiff extends React.Component<
               value={this.state.search}
               onChange={this.onSearchChange}
             />
-            <div className="unity-hierarchy-tree">
+            <div
+              className="unity-hierarchy-tree"
+              tabIndex={0}
+              onKeyDown={this.onHierarchyKeyDown}
+            >
               {this.renderHierarchy(result)}
               {prefabList}
             </div>

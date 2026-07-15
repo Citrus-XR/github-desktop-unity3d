@@ -25,6 +25,7 @@ import { buildHierarchy } from './hierarchy-builder'
 import { expandPrefabInstances, overrideAppliedKey } from './prefab-expansion'
 import { computeSemanticDiff, IUnityParsedSide } from './semantic-diff'
 import { diffPrefabInstances, sourcePrefabGuidOf } from './prefab-diff'
+import { diffAnimationClips } from './animation-clip-diff'
 import {
   buildPrefabTargetIndex,
   IUnityPrefabTargetInfo,
@@ -158,6 +159,9 @@ export const computeUnityAssetDiff = (
   // side never carries a 1001 to compare — running the override diff on the
   // pre-expansion sides is what surfaces per-override modification/add/remove.
   const prefabInstances = diffPrefabInstances(before.documents, after.documents)
+  // AnimationClip diffing also runs against the ORIGINAL documents: clips live
+  // as top-level !u!74 docs and are unaffected by prefab expansion.
+  const animationClips = diffAnimationClips(before.documents, after.documents)
 
   // Per-source target indexes shared across every instance that points at the
   // same source prefab. A single scene often instantiates the same prefab many
@@ -404,6 +408,7 @@ export const computeUnityAssetDiff = (
       roots,
       documents,
       prefabInstances: enrichedInstances,
+      animationClips,
       resolvedGuids,
       sourcePrefabByExpandedNode,
       warnings: [...before.warnings, ...after.warnings],

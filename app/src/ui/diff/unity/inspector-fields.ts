@@ -100,11 +100,20 @@ export const toggleFieldFor = (
 // A field-list schema for components that just need a friendly, ordered subset
 // of fields (label + kind) with the rest either filtered normally or shown only
 // when modified. Types with a bespoke layout (GameObject/Transform) don't use it.
-type FieldKind = 'value' | 'bool' | 'vector'
+export type FieldKind =
+  | 'value'
+  | 'bool'
+  | 'vector'
+  | 'color'
+  | 'minMaxCurve'
+  | 'minMaxGradient'
+  | 'enum'
 export interface IFieldSpec {
   readonly key: string
   readonly label: string
   readonly kind: FieldKind
+  /** For `enum` kind — mapping from raw scalar value to friendly label. */
+  readonly enumLabels?: ReadonlyMap<string, string>
 }
 export interface IComponentSchema {
   readonly fields: ReadonlyArray<IFieldSpec>
@@ -202,6 +211,80 @@ export const isVectorLikeMap = (
       vectorAxisKeys.includes(e.key)
   )
 
+const rgbaChannels = new Set(['r', 'g', 'b', 'a'])
+
+/**
+ * Whether a value looks like a Unity Color (`{r, g, b, a}` map). Alpha is
+ * technically optional in a few serializers, but every Color emitted by
+ * Unity's YAML writer carries all four channels.
+ */
+export const isColorMap = (value: UnityPropertyValue | null): boolean => {
+  if (value === null || value.kind !== 'map' || value.entries.length !== 4) {
+    return false
+  }
+  const keys = new Set(value.entries.map(e => e.key))
+  for (const c of rgbaChannels) {
+    if (!keys.has(c)) {
+      return false
+    }
+  }
+  return value.entries.every(e => e.value.kind === 'scalar')
+}
+
+/**
+ * Whether a value carries the ParticleSystem MinMaxCurve shape: a `minMaxState`
+ * discriminator with the paired scalar / curve fields. Recognised across all
+ * four modes (Constant, Curve, TwoCurves, TwoConstants).
+ */
+export const isMinMaxCurve = (value: UnityPropertyValue | null): boolean => {
+  if (value === null || value.kind !== 'map') {
+    return false
+  }
+  const keys = new Set(value.entries.map(e => e.key))
+  return (
+    keys.has('minMaxState') &&
+    keys.has('scalar') &&
+    (keys.has('maxCurve') || keys.has('minCurve'))
+  )
+}
+
+/**
+ * Whether a value carries the ParticleSystem MinMaxGradient shape: a
+ * `minMaxState` discriminator plus at least one gradient/color side.
+ * Distinguished from MinMaxCurve by carrying `minColor` / `maxColor` rather
+ * than a `scalar`.
+ */
+export const isMinMaxGradient = (
+  value: UnityPropertyValue | null
+): boolean => {
+  if (value === null || value.kind !== 'map') {
+    return false
+  }
+  const keys = new Set(value.entries.map(e => e.key))
+  return (
+    keys.has('minMaxState') &&
+    (keys.has('minColor') || keys.has('maxColor')) &&
+    (keys.has('maxGradient') || keys.has('minGradient'))
+  )
+}
+
+/**
+ * Whether a value carries a ParticleSystem `MultiModeParameter` shape:
+ * `{ value, mode, spread, speed }` where `speed` is a MinMaxCurve. Used by
+ * ShapeModule's `radius` / `arc` fields (and other emitter distribution
+ * fields) — the value is the primary scalar Unity's Inspector shows, with
+ * the distribution mode / spread / speed exposed on hover.
+ */
+export const isMultiModeParameter = (
+  value: UnityPropertyValue | null
+): boolean => {
+  if (value === null || value.kind !== 'map') {
+    return false
+  }
+  const keys = new Set(value.entries.map(e => e.key))
+  return keys.has('value') && keys.has('mode') && keys.has('speed')
+}
+
 /**
  * Split a Prefab override propertyPath into its base and vector axis, e.g.
  * `m_LocalRotation.x` → `{ base: 'm_LocalRotation', axis: 'x' }`. Returns null
@@ -241,6 +324,40 @@ const friendlyOverridePathLabels: ReadonlyMap<string, string> = new Map([
   ['m_Material', 'Material'],
   ['m_Mesh', 'Mesh'],
   ['m_Script', 'Script'],
+  // ParticleSystem — common paths users see in overrides. Module.scalar paths
+  // land on the constant value of a MinMaxCurve; the full path stays as the
+  // title-attribute so the mode is still discoverable.
+  ['lengthInSec', 'Duration'],
+  ['looping', 'Looping'],
+  ['prewarm', 'Prewarm'],
+  ['playOnAwake', 'Play on Awake'],
+  ['startDelay.scalar', 'Start Delay'],
+  ['InitialModule.startLifetime.scalar', 'Start Lifetime'],
+  ['InitialModule.startSpeed.scalar', 'Start Speed'],
+  ['InitialModule.startSize.scalar', 'Start Size'],
+  ['InitialModule.startRotation.scalar', 'Start Rotation'],
+  ['InitialModule.gravityModifier.scalar', 'Gravity Modifier'],
+  ['InitialModule.maxNumParticles', 'Max Particles'],
+  ['EmissionModule.enabled', 'Emission'],
+  ['EmissionModule.rateOverTime.scalar', 'Rate over Time'],
+  ['EmissionModule.rateOverDistance.scalar', 'Rate over Distance'],
+  ['ShapeModule.enabled', 'Shape'],
+  ['ShapeModule.type', 'Shape Type'],
+  ['ShapeModule.radius', 'Shape Radius'],
+  ['ShapeModule.angle', 'Shape Angle'],
+  ['ColorModule.enabled', 'Color over Lifetime'],
+  ['SizeModule.enabled', 'Size over Lifetime'],
+  ['RotationModule.enabled', 'Rotation over Lifetime'],
+  ['VelocityModule.enabled', 'Velocity over Lifetime'],
+  ['NoiseModule.enabled', 'Noise'],
+  ['CollisionModule.enabled', 'Collision'],
+  ['TrailModule.enabled', 'Trails'],
+  // ParticleSystemRenderer — the ones users tweak most.
+  ['m_RenderMode', 'Render Mode'],
+  ['m_SortMode', 'Sort Mode'],
+  ['m_MinParticleSize', 'Min Particle Size'],
+  ['m_MaxParticleSize', 'Max Particle Size'],
+  ['m_MaskInteraction', 'Sprite Mask Interaction'],
 ])
 
 /**

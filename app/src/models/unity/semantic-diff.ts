@@ -9,6 +9,7 @@
  */
 
 import { UnityFileId, UnityPropertyValue } from './serialized-asset'
+import { IUnityAnimationClipDiff } from './animation-clip'
 
 export type UnityChangeStatus = 'added' | 'removed' | 'modified' | 'unchanged'
 
@@ -176,6 +177,8 @@ export interface IUnitySemanticDiffResult {
   readonly documents: ReadonlyArray<IUnityDocumentDiff>
   /** Per prefab-instance override diffs (the `!u!1001` documents). */
   readonly prefabInstances: ReadonlyArray<IUnityPrefabInstanceDiff>
+  /** Per AnimationClip diffs (the `!u!74` documents). */
+  readonly animationClips: ReadonlyArray<IUnityAnimationClipDiff>
   readonly resolvedGuids: ReadonlyArray<IUnityResolvedGuid>
   /**
    * Per-hierarchy-node origin: each entry maps a GameObject/Transform fileID

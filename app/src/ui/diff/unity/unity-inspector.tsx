@@ -26,6 +26,7 @@ import {
   diffPropertySequence,
   valueEquals,
 } from '../../../lib/unity/semantic-diff'
+import { AnimationClipInspector } from './animation-clip-inspector'
 import {
   CollapsibleArray,
   CollapsibleValue,
@@ -38,6 +39,11 @@ import {
   findGameObject,
   friendlyOverridePathLabel,
   IComponentSchema,
+  IFieldSpec,
+  isColorMap,
+  isMinMaxCurve,
+  isMinMaxGradient,
+  isMultiModeParameter,
   isVectorLikeMap,
   resolveLayerName,
   scalarSide,
@@ -48,6 +54,20 @@ import {
   toggleFieldFor,
   vectorAxisFromPropertyPath,
 } from './inspector-fields'
+import {
+  particleSystemHeaderSchema,
+  particleSystemModules,
+  particleSystemRendererGroups,
+  IParticleSystemModuleSchema,
+  IParticleSystemRendererGroup,
+} from './particle-system-schema'
+import {
+  ColorFieldDisplay,
+  EnumFieldDisplay,
+  MinMaxCurveDisplay,
+  MinMaxGradientDisplay,
+  MultiModeParameterDisplay,
+} from './particle-system-widgets'
 
 interface IUnityInspectorProps {
   readonly result: IUnitySemanticDiffResult
@@ -84,6 +104,12 @@ interface IUnityInspectorState {
   readonly collapsedComponents: ReadonlySet<UnityFileId>
   /** Override-tree nodes (keyed by hierarchy path) the user collapsed. */
   readonly collapsedOverrideNodes: ReadonlySet<string>
+  /**
+   * Nested module / group sub-sections the user collapsed, keyed by
+   * `${docFileId}::${moduleKey}` so the same module in two different
+   * ParticleSystem documents keeps independent collapse state.
+   */
+  readonly collapsedModules: ReadonlySet<string>
 }
 
 /**
@@ -485,6 +511,7 @@ export class UnityInspector extends React.Component<
   public state: IUnityInspectorState = {
     collapsedComponents: new Set(),
     collapsedOverrideNodes: new Set(),
+    collapsedModules: new Set(),
   }
 
   // Set while rendering a structural field so its arrays start collapsed. Read
@@ -614,6 +641,21 @@ export class UnityInspector extends React.Component<
       collapsedComponents.add(fileId)
     }
     this.setState({ collapsedComponents })
+  }
+
+  /** Collapse/expand a nested module or renderer group. */
+  private onToggleModule = (e: React.MouseEvent<HTMLElement>) => {
+    const key = e.currentTarget.dataset.moduleKey
+    if (key === undefined) {
+      return
+    }
+    const collapsedModules = new Set(this.state.collapsedModules)
+    if (collapsedModules.has(key)) {
+      collapsedModules.delete(key)
+    } else {
+      collapsedModules.add(key)
+    }
+    this.setState({ collapsedModules })
   }
 
   private renderInspector(result: IUnitySemanticDiffResult) {
@@ -827,6 +869,9 @@ export class UnityInspector extends React.Component<
     doc: IUnityDocumentDiff,
     result: IUnitySemanticDiffResult
   ) {
+    if (doc.typeName === 'AnimationClip') {
+      return this.renderAnimationClipInspector(doc, result)
+    }
     return (
       <>
         <h2 className="unity-inspector-title">{doc.typeName}</h2>
@@ -839,6 +884,25 @@ export class UnityInspector extends React.Component<
               result
             )}
       </>
+    )
+  }
+
+  /**
+   * Friendly AnimationClip view — replaces both the standalone `.anim` path
+   * and any embedded !u!74 doc inside a `.controller`. Falls back gracefully
+   * when the semantic-diff result predates the animationClips field.
+   */
+  private renderAnimationClipInspector(
+    doc: IUnityDocumentDiff,
+    result: IUnitySemanticDiffResult
+  ) {
+    const clip = result.animationClips.find(c => c.fileId === doc.fileId)
+    return (
+      <AnimationClipInspector
+        doc={doc}
+        clip={clip}
+        showUnchanged={this.props.showUnchanged}
+      />
     )
   }
 
@@ -1214,6 +1278,15 @@ export class UnityInspector extends React.Component<
     if (typeName === 'Transform' || typeName === 'RectTransform') {
       return this.renderTransformBody(typeName, doc, result, hidden)
     }
+    if (typeName === 'AnimationClip') {
+      return this.renderAnimationClipInspector(doc, result)
+    }
+    if (typeName === 'ParticleSystem') {
+      return this.renderParticleSystemBody(doc, result, hidden)
+    }
+    if (typeName === 'ParticleSystemRenderer') {
+      return this.renderParticleSystemRendererBody(doc, result, hidden)
+    }
     const schema = schemaFor(typeName)
     if (schema !== undefined) {
       return this.renderSchemaBody(schema, doc, result, hidden)
@@ -1323,6 +1396,526 @@ export class UnityInspector extends React.Component<
   }
 
   /**
+   * Render one row of a typed schema field — the shared switch used by the
+   * generic schema body, ParticleSystem modules, and ParticleSystemRenderer
+   * groups. Auto-detects MinMaxCurve / MinMaxGradient / Color shapes when the
+   * field is declared `value` so a schema entry without a specific `kind` still
+   * gets the friendly widget when the value matches.
+   */
+  private renderTypedFieldRow(
+    field: IFieldSpec,
+    prop: IUnityPropertyDiff,
+    result: IUnitySemanticDiffResult
+  ): React.ReactNode {
+    if (field.kind === 'vector') {
+      return this.renderVectorRow(field.label, prop)
+    }
+    if (field.kind === 'bool') {
+      return this.renderScalarField(field.label, prop, checkboxGlyph)
+    }
+    if (field.kind === 'enum') {
+      const labels = field.enumLabels ?? new Map<string, string>()
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <EnumFieldDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+              labels={labels}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (field.kind === 'color') {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <ColorFieldDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (field.kind === 'minMaxCurve') {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <MinMaxCurveDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (field.kind === 'minMaxGradient') {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <MinMaxGradientDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    // 'value': auto-detect shape when possible so a schema that says `value` on
+    // e.g. `startColor` still gets a swatch — keeps schemas compact.
+    if (isMinMaxCurve(prop.after) || isMinMaxCurve(prop.before)) {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <MinMaxCurveDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (isMinMaxGradient(prop.after) || isMinMaxGradient(prop.before)) {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <MinMaxGradientDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (isColorMap(prop.after) || isColorMap(prop.before)) {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <ColorFieldDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    if (
+      isMultiModeParameter(prop.after) ||
+      isMultiModeParameter(prop.before)
+    ) {
+      return (
+        <div className={`unity-property ${statusClass(prop.status)}`}>
+          <span className="unity-property-key">{field.label}</span>
+          <span className="unity-property-value">
+            <MultiModeParameterDisplay
+              status={prop.status}
+              before={prop.before}
+              after={prop.after}
+            />
+          </span>
+        </div>
+      )
+    }
+    return this.renderLabeledValue(field.label, prop, result)
+  }
+
+  /**
+   * Fallback row for a non-schema field inside a ParticleSystem module — same
+   * auto-detection story, but starts from a plain property diff (no `label`
+   * override). Uses the property's own key as the label after a light
+   * friendliness pass through `friendlyOverridePathLabel`.
+   */
+  private renderAutoDetectedRow(
+    prop: IUnityPropertyDiff,
+    result: IUnitySemanticDiffResult,
+    restModifiedOnly: boolean
+  ): React.ReactNode {
+    if (isMinMaxCurve(prop.after) || isMinMaxCurve(prop.before)) {
+      return this.renderTypedFieldRow(
+        {
+          key: prop.key,
+          label: friendlyOverridePathLabel(prop.key),
+          kind: 'minMaxCurve',
+        },
+        prop,
+        result
+      )
+    }
+    if (isMinMaxGradient(prop.after) || isMinMaxGradient(prop.before)) {
+      return this.renderTypedFieldRow(
+        {
+          key: prop.key,
+          label: friendlyOverridePathLabel(prop.key),
+          kind: 'minMaxGradient',
+        },
+        prop,
+        result
+      )
+    }
+    if (isColorMap(prop.after) || isColorMap(prop.before)) {
+      return this.renderTypedFieldRow(
+        {
+          key: prop.key,
+          label: friendlyOverridePathLabel(prop.key),
+          kind: 'color',
+        },
+        prop,
+        result
+      )
+    }
+    if (
+      isMultiModeParameter(prop.after) ||
+      isMultiModeParameter(prop.before)
+    ) {
+      return this.renderTypedFieldRow(
+        {
+          key: prop.key,
+          label: friendlyOverridePathLabel(prop.key),
+          kind: 'value',
+        },
+        prop,
+        result
+      )
+    }
+    return this.renderPropertyRow(prop, result, restModifiedOnly)
+  }
+
+  /**
+   * The ParticleSystem body: header row above a stack of collapsible module
+   * boxes. Each module is a nested `unity-component` with its own optional
+   * enabled checkbox — visually identical to the top-level component list, so
+   * the eye can navigate this monster document one module at a time. Unknown
+   * fields at the ParticleSystem root fall into a final "More" bucket shown
+   * only when modified.
+   */
+  private renderParticleSystemBody(
+    doc: IUnityDocumentDiff,
+    result: IUnitySemanticDiffResult,
+    hidden: ReadonlySet<string>
+  ) {
+    const moduleKeys = new Set(particleSystemModules.map(m => m.key))
+    const headerHandled = new Set(particleSystemHeaderSchema.fields.map(f => f.key))
+    const headerRows = particleSystemHeaderSchema.fields
+      .map(field => {
+        if (hidden.has(field.key)) {
+          return null
+        }
+        const prop = doc.properties.find(p => p.key === field.key)
+        if (prop === undefined) {
+          return null
+        }
+        if (
+          !this.props.showUnchanged &&
+          prop.status === 'unchanged' &&
+          particleSystemHeaderSchema.restModifiedOnly
+        ) {
+          return null
+        }
+        return (
+          <React.Fragment key={field.key}>
+            {this.renderTypedFieldRow(field, prop, result)}
+          </React.Fragment>
+        )
+      })
+      .filter(row => row !== null)
+    const moduleSections = particleSystemModules
+      .map(module => this.renderParticleSystemModule(doc, result, module, hidden))
+      .filter(section => section !== null)
+    const restRows = doc.properties
+      .filter(
+        p =>
+          !hidden.has(p.key) &&
+          !moduleKeys.has(p.key) &&
+          !headerHandled.has(p.key) &&
+          this.restFieldVisible(p, true)
+      )
+      .map(p => (
+        <React.Fragment key={p.key}>
+          {this.renderAutoDetectedRow(p, result, true)}
+        </React.Fragment>
+      ))
+    return (
+      <>
+        {headerRows.length > 0 ? (
+          <div className="unity-properties unity-ps-header">{headerRows}</div>
+        ) : null}
+        <div className="unity-ps-modules">{moduleSections}</div>
+        {restRows.length > 0 ? (
+          <div className="unity-properties">{restRows}</div>
+        ) : null}
+      </>
+    )
+  }
+
+  /**
+   * Render one ParticleSystem module as a nested collapsible section. Returns
+   * `null` when the module is absent from the document, or when it has no
+   * visible content (unchanged + Show-unchanged off).
+   */
+  private renderParticleSystemModule(
+    doc: IUnityDocumentDiff,
+    result: IUnitySemanticDiffResult,
+    module: IParticleSystemModuleSchema,
+    hidden: ReadonlySet<string>
+  ): React.ReactNode {
+    if (hidden.has(module.key)) {
+      return null
+    }
+    const moduleProp = doc.properties.find(p => p.key === module.key)
+    if (moduleProp === undefined) {
+      return null
+    }
+    const moduleMap = moduleProp.after ?? moduleProp.before
+    if (moduleMap === null || moduleMap.kind !== 'map') {
+      return null
+    }
+    // Extract per-field property diffs by drilling one level into the module
+    // map. Each entry becomes a synthetic `IUnityPropertyDiff` so the shared
+    // row renderers can consume it just like a top-level property.
+    const beforeEntries =
+      moduleProp.before !== null && moduleProp.before.kind === 'map'
+        ? new Map(moduleProp.before.entries.map(e => [e.key, e.value]))
+        : new Map<string, UnityPropertyValue>()
+    const afterEntries =
+      moduleProp.after !== null && moduleProp.after.kind === 'map'
+        ? new Map(moduleProp.after.entries.map(e => [e.key, e.value]))
+        : new Map<string, UnityPropertyValue>()
+    const childKeys = new Array<string>()
+    const seen = new Set<string>()
+    for (const key of [...afterEntries.keys(), ...beforeEntries.keys()]) {
+      if (!seen.has(key)) {
+        seen.add(key)
+        childKeys.push(key)
+      }
+    }
+    const childOf = (key: string): IUnityPropertyDiff => {
+      const b = beforeEntries.get(key) ?? null
+      const a = afterEntries.get(key) ?? null
+      const status: UnityChangeStatus =
+        b === null
+          ? 'added'
+          : a === null
+          ? 'removed'
+          : valueEquals(b, a)
+          ? 'unchanged'
+          : 'modified'
+      return { key, status, before: b, after: a }
+    }
+    const enabledProp =
+      module.enabledField !== undefined
+        ? childOf(module.enabledField)
+        : undefined
+    const handledKeys = new Set(module.fields.map(f => f.key))
+    if (module.enabledField !== undefined) {
+      handledKeys.add(module.enabledField)
+    }
+    handledKeys.add('serializedVersion')
+
+    const schemaRows = module.fields
+      .map(field => {
+        if (!childKeys.includes(field.key)) {
+          return null
+        }
+        const prop = childOf(field.key)
+        return (
+          <React.Fragment key={field.key}>
+            {this.renderTypedFieldRow(field, prop, result)}
+          </React.Fragment>
+        )
+      })
+      .filter(row => row !== null)
+    const restRows = childKeys
+      .filter(k => !handledKeys.has(k))
+      .map(k => childOf(k))
+      .filter(p =>
+        p.key === 'm_Name' || alwaysHiddenFields.has(p.key)
+          ? p.status === 'modified'
+          : module.restModifiedOnly
+          ? p.status === 'modified'
+          : this.props.showUnchanged || p.status !== 'unchanged'
+      )
+      .map(p => (
+        <React.Fragment key={p.key}>
+          {this.renderAutoDetectedRow(p, result, module.restModifiedOnly)}
+        </React.Fragment>
+      ))
+
+    const status: UnityChangeStatus = moduleProp.status
+    const hasVisibleContent = schemaRows.length > 0 || restRows.length > 0
+    if (
+      !hasVisibleContent &&
+      status === 'unchanged' &&
+      !this.props.showUnchanged
+    ) {
+      return null
+    }
+    return this.renderNestedSection(
+      `${doc.fileId}::${module.key}`,
+      module.label,
+      status,
+      enabledProp,
+      hasVisibleContent
+        ? (
+          <div className="unity-properties">
+            {schemaRows}
+            {restRows}
+          </div>
+        )
+        : (
+          <div className="unity-properties unity-properties-empty">
+            No changes in this module
+          </div>
+        )
+    )
+  }
+
+  /**
+   * ParticleSystemRenderer body: grouped sub-sections
+   * (Render / Sorting / Materials / Lighting / Probes) with the same nested
+   * collapsible visual as ParticleSystem modules. Fields not enumerated in a
+   * group fall into a final "More" bucket that shows only when modified —
+   * Renderers carry a lot of lightmap plumbing users rarely touch.
+   */
+  private renderParticleSystemRendererBody(
+    doc: IUnityDocumentDiff,
+    result: IUnitySemanticDiffResult,
+    hidden: ReadonlySet<string>
+  ) {
+    const handled = new Set<string>()
+    for (const group of particleSystemRendererGroups) {
+      for (const field of group.fields) {
+        handled.add(field.key)
+      }
+    }
+    const sections = particleSystemRendererGroups
+      .map(group => this.renderRendererGroup(doc, result, group, hidden))
+      .filter(section => section !== null)
+    const restRows = doc.properties
+      .filter(
+        p =>
+          !hidden.has(p.key) &&
+          !handled.has(p.key) &&
+          this.restFieldVisible(p, true)
+      )
+      .map(p => (
+        <React.Fragment key={p.key}>
+          {this.renderAutoDetectedRow(p, result, true)}
+        </React.Fragment>
+      ))
+    return (
+      <>
+        <div className="unity-ps-modules">{sections}</div>
+        {restRows.length > 0 ? (
+          <div className="unity-properties">{restRows}</div>
+        ) : null}
+      </>
+    )
+  }
+
+  private renderRendererGroup(
+    doc: IUnityDocumentDiff,
+    result: IUnitySemanticDiffResult,
+    group: IParticleSystemRendererGroup,
+    hidden: ReadonlySet<string>
+  ): React.ReactNode {
+    const rows = group.fields
+      .map(field => {
+        if (hidden.has(field.key)) {
+          return null
+        }
+        const prop = doc.properties.find(p => p.key === field.key)
+        if (prop === undefined) {
+          return null
+        }
+        if (!this.props.showUnchanged && prop.status === 'unchanged') {
+          return null
+        }
+        return (
+          <React.Fragment key={field.key}>
+            {this.renderTypedFieldRow(field, prop, result)}
+          </React.Fragment>
+        )
+      })
+      .filter(row => row !== null)
+    // Aggregate status across the group's actual field diffs so the group
+    // border reflects "did anything visible change here".
+    let status: UnityChangeStatus = 'unchanged'
+    for (const field of group.fields) {
+      const prop = doc.properties.find(p => p.key === field.key)
+      if (prop === undefined) {
+        continue
+      }
+      if (prop.status !== 'unchanged') {
+        status = 'modified'
+        break
+      }
+    }
+    if (rows.length === 0) {
+      return null
+    }
+    return this.renderNestedSection(
+      `${doc.fileId}::psr::${group.key}`,
+      group.label,
+      status,
+      undefined,
+      <div className="unity-properties">{rows}</div>
+    )
+  }
+
+  /**
+   * Nested collapsible sub-section (a module inside ParticleSystem, a group
+   * inside ParticleSystemRenderer). Shares its visual language with the
+   * top-level `.unity-component` box; a `.is-nested` modifier tightens the
+   * header spacing so the two levels are visually distinct.
+   */
+  private renderNestedSection(
+    stateKey: string,
+    label: string,
+    status: UnityChangeStatus,
+    enabledProp: IUnityPropertyDiff | undefined,
+    body: React.ReactNode
+  ): React.ReactNode {
+    const collapsed = this.state.collapsedModules.has(stateKey)
+    return (
+      <div
+        key={stateKey}
+        className={`unity-component is-nested ${statusClass(status)}`}
+      >
+        <div
+          className="unity-component-title"
+          data-module-key={stateKey}
+          onClick={this.onToggleModule}
+        >
+          <span className="unity-component-toggle">
+            {collapsed ? '▸' : '▾'}
+          </span>
+          {enabledProp !== undefined
+            ? this.renderEnabledCheckbox(enabledProp)
+            : null}
+          <span className="unity-component-name">{label}</span>
+        </div>
+        {collapsed ? null : body}
+      </div>
+    )
+  }
+
+  /**
    * Whether a non-primary field appears: plumbing fields and an (empty) m_Name
    * only when modified; everything else either always-when-modified (mostly
    * internal sections) or per the global Show-unchanged toggle.
@@ -1369,13 +1962,11 @@ export class UnityInspector extends React.Component<
           if (prop === undefined) {
             return null
           }
-          const row =
-            field.kind === 'vector'
-              ? this.renderVectorRow(field.label, prop)
-              : field.kind === 'bool'
-              ? this.renderScalarField(field.label, prop, checkboxGlyph)
-              : this.renderLabeledValue(field.label, prop, result)
-          return <React.Fragment key={field.key}>{row}</React.Fragment>
+          return (
+            <React.Fragment key={field.key}>
+              {this.renderTypedFieldRow(field, prop, result)}
+            </React.Fragment>
+          )
         })}
         {restRows}
       </div>
