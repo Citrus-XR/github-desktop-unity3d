@@ -64,7 +64,6 @@ jobs:
           name: windows-x64
           path: |
             dist/GitHubDesktopUSetup-x64.exe
-            dist/GitHubDesktopUSetup-x64.msi
             dist/GitHubDesktopU-*.nupkg
             dist/bundle-size.json
             dist/bundle-hash.json
@@ -92,10 +91,15 @@ jobs:
         with:
           # Uses the pushed tag name as the release tag. `name` defaults to
           # the tag too, so a `release-3.7.0` tag becomes a `release-3.7.0`
-          # release with the same title.
+          # release with the same title. Only the Squirrel .exe ships — the
+          # electron-winstaller .msi is a minimal wrapper aimed at Group
+          # Policy / enterprise deployment; on regular consumer boxes it
+          # frequently completes install but fails to launch the Squirrel
+          # firstrun stub, leaving the user with a Start Menu shortcut that
+          # spins the cursor and dies. The .exe is the primary supported
+          # install surface.
           files: |
             artifacts/GitHubDesktopUSetup-x64.exe
-            artifacts/GitHubDesktopUSetup-x64.msi
           fail_on_unmatched_files: true
           # Everything shipped from the fork is a personal build — no
           # official channel — so publish as prerelease by default.
