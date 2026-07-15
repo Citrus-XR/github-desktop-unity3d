@@ -579,11 +579,13 @@
 
 .unity-value-before {
   text-decoration: line-through;
-  opacity: 0.8;
+  opacity: 0.75;
+  color: var(--color-deleted);
 }
 
 .unity-value-after {
   font-weight: var(--font-weight-semibold);
+  color: var(--color-new);
 }
 
 // AnimationClip friendly viewer -----------------------------------------------
@@ -1175,4 +1177,466 @@
 // visual noise.
 .unity-hierarchy-tree {
   outline: none;
+}
+
+// AnimatorController viewer -------------------------------------------------
+
+.unity-anim-controller {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-half);
+  height: 100%;
+  overflow: hidden;
+}
+
+.unity-anim-controller-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing);
+  flex-wrap: wrap;
+}
+
+.unity-anim-controller-layers {
+  display: inline-flex;
+  border: 1px solid var(--box-border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+
+.unity-anim-controller-layer {
+  border: none;
+  background: transparent;
+  padding: var(--spacing-half) var(--spacing);
+  cursor: pointer;
+  color: var(--text-color);
+  font: inherit;
+  border-right: 1px solid var(--box-border-color);
+
+  &:last-child {
+    border-right: none;
+  }
+
+  &:hover {
+    background: var(--secondary-background-color);
+  }
+
+  &.is-active {
+    background: var(--button-background);
+    color: var(--button-text-color);
+  }
+
+  &.unity-status-added {
+    color: var(--color-new);
+  }
+  &.unity-status-removed {
+    color: var(--color-deleted);
+  }
+  &.unity-status-modified {
+    color: var(--color-modified);
+  }
+}
+
+.unity-anim-controller-actions {
+  display: inline-flex;
+  gap: var(--spacing-half);
+  margin-left: auto;
+}
+
+.unity-anim-controller-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-half);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary-color);
+
+  .sep {
+    opacity: 0.6;
+  }
+}
+
+.unity-anim-controller-crumb {
+  border: none;
+  background: transparent;
+  padding: 2px var(--spacing-half);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  color: var(--text-color);
+  font: inherit;
+
+  &:hover:not(:disabled) {
+    background: var(--secondary-background-color);
+  }
+  &:disabled {
+    cursor: default;
+    color: var(--text-secondary-color);
+  }
+}
+
+.unity-anim-controller-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+}
+
+.unity-anim-controller-splitter {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  align-self: stretch;
+  background: transparent;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 2px;
+    background: var(--box-border-color);
+    transition: background 0.15s;
+  }
+
+  &:hover::before,
+  &:active::before {
+    background: var(--text-secondary-color);
+  }
+}
+
+.unity-diff .unity-anim-controller-splitter,
+.unity-diff .unity-anim-controller-splitter * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.unity-anim-controller-graph-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.unity-anim-controller-detail {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 var(--spacing);
+}
+
+.unity-anim-controller-tag {
+  font-size: var(--font-size-xs);
+  padding: 0 var(--spacing-half);
+  border-radius: var(--border-radius);
+  text-transform: lowercase;
+  background: var(--secondary-background-color);
+
+  &.unity-status-added {
+    color: var(--color-new);
+  }
+  &.unity-status-removed {
+    color: var(--color-deleted);
+  }
+  &.unity-status-modified {
+    color: var(--color-modified);
+  }
+  &.unity-status-unchanged {
+    color: var(--text-secondary-color);
+  }
+}
+
+.unity-anim-controller-detail-title {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-half);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-half);
+  flex-wrap: wrap;
+}
+
+.unity-anim-controller-detail-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px var(--spacing);
+  margin: 0;
+
+  dt {
+    color: var(--text-secondary-color);
+    font-size: var(--font-size-sm);
+  }
+  dd {
+    margin: 0;
+    word-break: break-all;
+  }
+}
+
+.unity-anim-controller-copyable {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--link-button-color, var(--text-color));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+
+  &:hover:not(:disabled) {
+    color: var(--link-button-hover-color, var(--text-color));
+  }
+  &:disabled {
+    color: var(--text-secondary-color);
+    cursor: default;
+    text-decoration: none;
+  }
+}
+
+.unity-anim-controller-transition-list,
+.unity-anim-controller-condition-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-sm);
+
+  li {
+    padding: 2px 0;
+  }
+}
+
+.unity-anim-controller-params {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 var(--spacing) 0 var(--spacing-half);
+}
+
+.unity-anim-controller-params-title {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-half);
+}
+
+.unity-anim-controller-params ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.unity-anim-controller-param {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  align-items: center;
+  gap: var(--spacing-half);
+  padding: 2px 0;
+  font-size: var(--font-size-sm);
+}
+
+// Narrow left stripe replaces the wordy "modified" pill. Coloured per status;
+// unchanged rows keep the stripe as a neutral spacer so the columns line up.
+.unity-anim-controller-param-stripe {
+  align-self: stretch;
+  min-height: 14px;
+  border-radius: 2px;
+  background: transparent;
+
+  &.unity-status-added {
+    background: var(--color-new);
+  }
+  &.unity-status-removed {
+    background: var(--color-deleted);
+  }
+  &.unity-status-modified {
+    background: var(--color-modified);
+  }
+}
+
+.unity-anim-controller-param-name {
+  font-family: var(--font-family-monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unity-anim-controller-param-value {
+  font-family: var(--font-family-monospace);
+  color: var(--text-color);
+  text-align: right;
+}
+
+.unity-anim-glyph {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.unity-anim-num {
+  font-variant-numeric: tabular-nums;
+}
+
+// Graph canvas --------------------------------------------------------------
+
+.unity-anim-graph {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--box-border-color) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, var(--box-border-color) 1px, transparent 1px) 0 0 / 40px 40px;
+  border: 1px solid var(--box-border-color);
+  border-radius: var(--border-radius);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+
+  &.is-panning {
+    cursor: grabbing;
+  }
+}
+
+.unity-diff .unity-anim-graph,
+.unity-diff .unity-anim-graph * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.unity-anim-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+// Node styling. Every node emits currentColor-driven stroke/fill; per-status
+// classes swap the color. Default state gets a filled fill on top of that.
+.unity-anim-graph-node {
+  cursor: pointer;
+  color: var(--text-secondary-color);
+
+  rect {
+    fill: var(--background-color);
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  text {
+    fill: var(--text-color);
+    font-size: 12px;
+    font-family: var(--font-family-sans);
+    pointer-events: none;
+  }
+
+  &.is-default rect {
+    fill: color-mix(in srgb, var(--color-modified, #d4a017) 20%, var(--background-color));
+  }
+
+  &.is-selected rect {
+    stroke-width: 2.5;
+  }
+
+  &.unity-anim-graph-status-added {
+    color: var(--color-new);
+  }
+  &.unity-anim-graph-status-removed {
+    color: var(--color-deleted);
+    rect {
+      stroke-dasharray: 4 3;
+    }
+  }
+  &.unity-anim-graph-status-modified {
+    color: var(--color-modified);
+  }
+}
+
+.unity-anim-graph-node-child-sm rect {
+  fill: color-mix(in srgb, var(--secondary-background-color) 60%, var(--background-color));
+}
+
+.unity-anim-graph-special {
+  cursor: pointer;
+  color: var(--text-secondary-color);
+
+  rect {
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  text {
+    fill: var(--text-color);
+    font-size: 12px;
+    font-family: var(--font-family-sans);
+    pointer-events: none;
+  }
+}
+
+.unity-anim-graph-special-entry {
+  color: var(--color-new);
+  rect {
+    fill: color-mix(in srgb, var(--color-new) 12%, var(--background-color));
+  }
+}
+
+.unity-anim-graph-special-exit {
+  color: var(--color-deleted);
+  rect {
+    fill: color-mix(in srgb, var(--color-deleted) 12%, var(--background-color));
+  }
+}
+
+.unity-anim-graph-special-anystate {
+  color: var(--color-modified);
+  rect {
+    fill: color-mix(in srgb, var(--color-modified) 12%, var(--background-color));
+  }
+}
+
+// Edges: a wide invisible hit path plus a visible stroke plus the arrowhead.
+.unity-anim-graph-edge {
+  cursor: pointer;
+  color: var(--text-secondary-color);
+}
+
+.unity-anim-graph-edge-hit {
+  stroke: transparent;
+  stroke-width: 12;
+}
+
+.unity-anim-graph-edge-line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.unity-anim-graph-edge-head {
+  fill: currentColor;
+  stroke: none;
+}
+
+.unity-anim-graph-edge {
+  &.unity-anim-graph-status-added {
+    color: var(--color-new);
+  }
+  &.unity-anim-graph-status-removed {
+    color: var(--color-deleted);
+    .unity-anim-graph-edge-line {
+      stroke-dasharray: 4 3;
+    }
+  }
+  &.unity-anim-graph-status-modified {
+    color: var(--color-modified);
+  }
+  &.is-selected .unity-anim-graph-edge-line {
+    stroke-width: 2.5;
+  }
+  // The implicit Entry→default arrow is dimmer than an explicit transition
+  // so real transitions read as the primary signal in the graph.
+  &.is-synthetic {
+    color: var(--text-secondary-color);
+    opacity: 0.65;
+  }
 }

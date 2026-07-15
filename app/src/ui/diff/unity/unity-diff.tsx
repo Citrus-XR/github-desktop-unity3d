@@ -20,6 +20,7 @@ import {
 } from '../../main-process-proxy'
 import { countNodes, findGameObject, statusClass } from './inspector-fields'
 import { UnityInspector } from './unity-inspector'
+import { AnimatorControllerInspector } from './animator-controller-inspector'
 import { Button } from '../../lib/button'
 import { Resizable } from '../../resizable'
 
@@ -709,6 +710,25 @@ export class UnityDiff extends React.Component<
         <div className="unity-diff-message">
           This asset is not viewable as Unity YAML ({result.status}). Switch to
           Raw diff to view the raw changes.
+        </div>
+      )
+    }
+
+    // A `.controller` file gets a bespoke graph viewer that renders full-pane
+    // — the state / transition / layer graph is the whole point of the file
+    // and the doc list wouldn't help. Real controllers always have exactly
+    // one AnimatorController document; arraying it up is only a safety belt.
+    if (result.animatorControllers.length > 0) {
+      const controllerDiff = result.animatorControllers[0]
+      return (
+        <div className="unity-diff">
+          <div className="unity-diff-pane unity-inspector unity-inspector-only">
+            <AnimatorControllerInspector
+              result={result}
+              controllerDiff={controllerDiff}
+              showUnchanged={this.props.showUnchanged}
+            />
+          </div>
         </div>
       )
     }

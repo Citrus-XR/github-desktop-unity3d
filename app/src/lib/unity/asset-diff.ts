@@ -26,6 +26,7 @@ import { expandPrefabInstances, overrideAppliedKey } from './prefab-expansion'
 import { computeSemanticDiff, IUnityParsedSide } from './semantic-diff'
 import { diffPrefabInstances, sourcePrefabGuidOf } from './prefab-diff'
 import { diffAnimationClips } from './animation-clip-diff'
+import { diffAnimatorControllers } from './animator-controller-diff'
 import {
   buildPrefabTargetIndex,
   IUnityPrefabTargetInfo,
@@ -162,6 +163,13 @@ export const computeUnityAssetDiff = (
   // AnimationClip diffing also runs against the ORIGINAL documents: clips live
   // as top-level !u!74 docs and are unaffected by prefab expansion.
   const animationClips = diffAnimationClips(before.documents, after.documents)
+  // AnimatorController diffing likewise: the state graph is defined by a set
+  // of top-level docs (!u!91 + 1101/1102/1107/1109/206) that never participate
+  // in prefab expansion.
+  const animatorControllers = diffAnimatorControllers(
+    before.documents,
+    after.documents
+  )
 
   // Per-source target indexes shared across every instance that points at the
   // same source prefab. A single scene often instantiates the same prefab many
@@ -409,6 +417,7 @@ export const computeUnityAssetDiff = (
       documents,
       prefabInstances: enrichedInstances,
       animationClips,
+      animatorControllers,
       resolvedGuids,
       sourcePrefabByExpandedNode,
       warnings: [...before.warnings, ...after.warnings],
