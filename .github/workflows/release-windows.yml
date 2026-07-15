@@ -65,7 +65,6 @@ jobs:
           path: |
             dist/GitHubDesktopUSetup-x64.exe
             dist/GitHubDesktopUSetup-x64.msi
-            dist/GitHub Desktop U-x64.zip
             dist/GitHubDesktopU-*.nupkg
             dist/bundle-size.json
             dist/bundle-hash.json
@@ -97,7 +96,6 @@ jobs:
           files: |
             artifacts/GitHubDesktopUSetup-x64.exe
             artifacts/GitHubDesktopUSetup-x64.msi
-            artifacts/GitHub Desktop U-x64.zip
           fail_on_unmatched_files: true
           # Everything shipped from the fork is a personal build — no
           # official channel — so publish as prerelease by default.
