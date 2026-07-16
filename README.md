@@ -2,13 +2,28 @@
 
 ![Unity Semantic Diff for GitHub Desktop](docs/assets/unity-semantic-diff-poster.png)
 
-A GitHub Desktop fork that makes Unity source control readable. `.unity`, `.prefab`, `.mat`, `.controller` and `.anim` diffs render the way the Unity Inspector does — without opening Unity, without a project import step, straight off the git-tracked YAML.
+A GitHub Desktop fork that makes Unity source control readable. Scene, prefab, material, controller, and animation diffs render the way the Unity Inspector does — without opening Unity, without a project import step, straight off the git-tracked YAML.
 
-The rest of the app is upstream GitHub Desktop. Everything below is what this fork adds.
+Only the diff renderer is new. The commit view, push / pull, branch UI, history, GitHub integration and every other part of Desktop are untouched upstream code, so nothing you already rely on has moved or changed.
 
-## What it does
+## Supported formats
 
-**Prefab / Scene Hierarchy.** Instead of a wall of `!u!1 &12345` blocks, you get a GameObject tree with per-component layouts (Transform, RectTransform, colliders, MeshRenderer, Rigidbody, Materials, …). Prefab instances are expanded inline; overrides are baked into the diff, so removing an override shows up as `override → source default`, not a dangling row you have to re-apply in your head.
+Every Unity YAML asset extension is picked up when the repository looks like a Unity project:
+
+- `.unity` — scenes
+- `.prefab` — prefabs (nested instances expanded inline, overrides baked in)
+- `.mat` — materials
+- `.controller` — AnimatorControllers (graph view)
+- `.anim` — AnimationClips (dopesheet + curves)
+- `.asset` — ScriptableObjects and everything else Unity serialises as YAML
+
+The five headline formats above have hand-tuned inspectors that match Unity's own layout. Anything else — custom ScriptableObjects, LightingSettings, SpriteAtlas, PhysicMaterial, VRC blueprints, whatever — falls back to a generic property-tree inspector. Same GameObject / component structure, references still decoded to names, layers and tags still resolved to real strings, values still colored by add / remove / modify / unchanged. Never a raw YAML wall unless you ask for one.
+
+And you *can* ask for one. The diff toolbar has a **Unity Diff** toggle that flips instantly back to the original text diff, whenever you want to see the underlying YAML — it lives in the standard Diff Options menu next to whitespace and hidden-whitespace.
+
+## What each inspector does
+
+**Prefab / Scene Hierarchy.** GameObject tree with per-component layouts (Transform, RectTransform, colliders, MeshRenderer, Rigidbody, Materials, …). Prefab instances are expanded inline; overrides are baked into the diff, so removing an override shows up as `override → source default`, not a dangling row you have to re-apply in your head.
 
 **Reference decoding.** `{fileID: -1000, guid: abc}` becomes `Player (Transform)` or `Metal_Rough.mat`. `m_Layer: 8` becomes `Terrain`. Same for tags.
 
@@ -21,8 +36,6 @@ The rest of the app is upstream GitHub Desktop. Everything below is what this fo
 **Model / FBX fileID resolution.** Prefabs and scenes often reference objects *inside* imported `.fbx` files, and Unity generates those fileIDs by hashing the object's hierarchy path plus class name (xxHash64). The fork reads the FBX directly with [`fbx-parser`](https://github.com/picode7/fbx-parser) — just the Model tree, no geometry — and re-derives the same ids with [`xxhashjs`](https://github.com/pierrec/js-xxhash). The algorithm was cross-checked against [V-Sekai's `unidot_importer`](https://github.com/V-Sekai/unidot_importer), whose Godot port relies on it for `.unitypackage` conversion. Both deps are pure JS, so the Electron packaging story is unchanged.
 
 **Off the main thread.** YAML parsing, prefab expansion, and the diff run in a worker. The eager diff carries only the changed documents; other documents stream in over a separate IPC channel when you click a node. 100k-document scenes stay responsive.
-
-A toolbar toggle drops back to the raw text diff any time, and the Unity Diff switch lives in the regular Diff Options menu next to whitespace and hidden-whitespace.
 
 ## Coexisting with upstream
 
@@ -46,3 +59,7 @@ script/unity-diff-stress.ts  stress harness — replays the pipeline across
 ```
 
 Tests live under `app/test/unit/unity/` and run in the normal `yarn test:unit` pass.
+
+## Contributors
+
+The Unity Semantic Diff feature — parser, worker, every inspector, the FBX fileID resolver, the diff pipeline — was written in collaboration with [Claude](https://claude.com/claude) (Anthropic). Direction, requirements, code review and integration by the fork's maintainers.
