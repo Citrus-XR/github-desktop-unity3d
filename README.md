@@ -1,54 +1,48 @@
 # GitHub Desktop for Unity
 
-This is a desktop git manager application optimized for Unity!
+![Unity Semantic Diff for GitHub Desktop](docs/assets/unity-semantic-diff-poster.png)
 
-* **Unity Semantic Diff**: Render semantic changes in `.unity`, `.prefab`, `.mat` like the Unity Inspector.
-* You can switch back to the raw text diff at any time on the toolbar.
+A GitHub Desktop fork that makes Unity source control readable. `.unity`, `.prefab`, `.mat`, `.controller` and `.anim` diffs render the way the Unity Inspector does — without opening Unity, without a project import step, straight off the git-tracked YAML.
 
-<!-- **Running on Linux (KDE/Wayland):** the dev launcher (`yarn start`) forces X11/XWayland (`--ozone-platform=x11`), because the native Wayland backend drops the in-window menu bar and mis-renders the frame under KDE. --->
+The rest of the app is upstream GitHub Desktop. Everything below is what this fork adds.
 
-<picture>
-  <source
-    srcset="https://user-images.githubusercontent.com/634063/202742848-63fa1488-6254-49b5-af7c-96a6b50ea8af.png"
-    media="(prefers-color-scheme: dark)"
-  />
-  <img
-    width="1072"
-    src="https://user-images.githubusercontent.com/634063/202742985-bb3b3b94-8aca-404a-8d8a-fd6a6f030672.png"
-    alt="A screenshot of the GitHub Desktop application showing changes being viewed and committed with two attributed co-authors"
-  />
-</picture>
+## What it does
+
+**Prefab / Scene Hierarchy.** Instead of a wall of `!u!1 &12345` blocks, you get a GameObject tree with per-component layouts (Transform, RectTransform, colliders, MeshRenderer, Rigidbody, Materials, …). Prefab instances are expanded inline; overrides are baked into the diff, so removing an override shows up as `override → source default`, not a dangling row you have to re-apply in your head.
+
+**Reference decoding.** `{fileID: -1000, guid: abc}` becomes `Player (Transform)` or `Metal_Rough.mat`. `m_Layer: 8` becomes `Terrain`. Same for tags.
+
+**AnimatorController graph.** The same layout you'd see in the Animator window, drawn straight from the `m_Position` coordinates Unity saves in the YAML. Pan, zoom, fit, double-click to drill into sub state machines. Nodes and edges outside the viewport are culled, so a 100-state controller stays interactive.
+
+**AnimationClip views.** Dopesheet or curves, keyframes colored by add / remove / modify / unchanged. Ctrl-scroll to zoom, Shift-scroll to pan, click a keyframe to copy `(path, attribute, time, value)`. A shared playhead samples every curve at once.
+
+**ParticleSystem inspector.** The ~25 modules Unity groups by hand (Initial, Shape, Emission, Color over Lifetime, Trail, Noise, …) render as collapsible sections. `MinMaxCurve` and `MinMaxGradient` values get an inline sparkline or color strip, shown as `before → after` when they change.
+
+**Model / FBX fileID resolution.** Prefabs and scenes often reference objects *inside* imported `.fbx` files, and Unity generates those fileIDs by hashing the object's hierarchy path plus class name (xxHash64). The fork reads the FBX directly with [`fbx-parser`](https://github.com/picode7/fbx-parser) — just the Model tree, no geometry — and re-derives the same ids with [`xxhashjs`](https://github.com/pierrec/js-xxhash). The algorithm was cross-checked against [V-Sekai's `unidot_importer`](https://github.com/V-Sekai/unidot_importer), whose Godot port relies on it for `.unitypackage` conversion. Both deps are pure JS, so the Electron packaging story is unchanged.
+
+**Off the main thread.** YAML parsing, prefab expansion, and the diff run in a worker. The eager diff carries only the changed documents; other documents stream in over a separate IPC channel when you click a node. 100k-document scenes stay responsive.
+
+A toolbar toggle drops back to the raw text diff any time, and the Unity Diff switch lives in the regular Diff Options menu next to whitespace and hidden-whitespace.
+
+## Coexisting with upstream
+
+The fork installs alongside official GitHub Desktop and shiftkey's `github-desktop-bin` — distinct bundle IDs, distinct install paths, its own `x-github-desktop-u://` URL scheme, its own GitHub OAuth app. Signing into one doesn't break signing into the other. The product name is suffixed with `U` (`GitHub Desktop U`, `desktop-u`) so nothing collides on disk or in the app registrations.
 
 ## Install
 
-- **Windows / macOS** — download a `GitHubDesktopUSetup-x64.{exe,msi}`
-  or `GitHub Desktop U-<arch>.zip` artifact from a
-  [CI run](https://github.com/Citrus-XR/github-desktop-unity3d/actions/workflows/ci.yml)
-  triggered via **Run workflow** (`upload-artifacts=true` is the
-  default). Signed builds require Azure code-signing secrets that
-  this fork's CI doesn't have — the Windows installers will trip
-  SmartScreen ("unknown publisher"); click **More info → Run anyway**.
-- **Linux (Arch/AUR)** — see [`linux/README.md`](linux/README.md).
-  Short form: `cd linux/aur/desktop-u && makepkg -si`.
+- **Windows / macOS** — grab a `GitHubDesktopUSetup-x64.exe` or `GitHub Desktop U-<arch>.zip` artifact from a [CI run](https://github.com/Citrus-XR/github-desktop-unity3d/actions/workflows/ci.yml) (use **Run workflow** — artifacts are uploaded by default). Builds aren't code-signed, so Windows SmartScreen will complain; **More info → Run anyway**.
+- **Linux (Arch)** — see [`linux/README.md`](linux/README.md). Short form: `cd linux/aur/desktop-u && makepkg -si`. The PKGBUILD tracks `origin/development`, so re-running `makepkg -si` picks up new commits without editing anything.
 
-It coexists with upstream GitHub Desktop and with shiftkey's Linux
-`github-desktop-bin` — installs to distinct paths, uses its own
-`x-github-desktop-u://` URL scheme, and its own OAuth app so
-authorizing one doesn't step on the other.
+## Where the code lives
 
-## Unity Semantic Diff notes
+```
+app/src/lib/unity/           parsing, prefab expansion, diff pipeline
+app/src/models/unity/        plain-data types + Unity 2022.3 class-id table
+app/src/main-process/unity/  worker + inspection service (IPC boundary)
+app/src/ui/diff/unity/       React components (inspector, animator graph,
+                             animation clip views, particle-system widgets)
+script/unity-diff-stress.ts  stress harness — replays the pipeline across
+                             every commit of a target repo
+```
 
-Prefabs and scenes often reference objects *inside* imported model
-files (FBX, OBJ, etc.), which Git can't see. To resolve those refs
-this fork parses the raw FBX with
-[`fbx-parser`](https://github.com/picode7/fbx-parser) (MIT) — for
-the object hierarchy alone, no geometry — and reconstructs the
-fileIDs Unity 2019+ generates for each object by hashing its
-hierarchy path plus class name with
-[`xxhashjs`](https://github.com/pierrec/js-xxhash) (MIT, Pierre
-Curto). The exact algorithm was cross-validated against
-[V-Sekai's `unidot_importer`](https://github.com/V-Sekai/unidot_importer),
-whose Godot port re-derives the same ids for `.unitypackage`
-conversion. Both dependencies stay pure JS — no native builds — so
-the Electron packaging story is unaffected.
-
+Tests live under `app/test/unit/unity/` and run in the normal `yarn test:unit` pass.
