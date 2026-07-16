@@ -79,21 +79,18 @@ jobs:
       - name: Ensure a clean working directory
         run: git diff --name-status --exit-code
   build:
-    name: ${{ matrix.friendlyName }} ${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
+    # macOS builds are disabled in the fork: Apple Developer signing secrets
+    # aren't set up, so `yarn package` fails on macos-* runners. The fork
+    # ships only Windows and Linux binaries.
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-2022
     permissions:
       contents: read
       id-token: write
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14-xlarge, windows-2022]
         arch: [x64, arm64]
-        include:
-          - os: macos-14-xlarge
-            friendlyName: macOS
-          - os: windows-2022
-            friendlyName: Windows
     timeout-minutes: 60
     environment: ${{ inputs.environment }}
     env:
@@ -108,9 +105,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           arch: ${{ matrix.arch }}
-      - name: Validate macOS version
-        if: runner.os == 'macOS'
-        run: yarn validate-macos-version
       - name: Run desktop-trampoline tests
         run: |
           cd vendor/desktop-trampoline
@@ -122,11 +116,6 @@ jobs:
           DESKTOP_OAUTH_CLIENT_ID: ${{ secrets.DESKTOP_OAUTH_CLIENT_ID }}
           DESKTOP_OAUTH_CLIENT_SECRET:
             ${{ secrets.DESKTOP_OAUTH_CLIENT_SECRET }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APPLICATION_CERT: ${{ secrets.APPLE_APPLICATION_CERT }}
-          KEY_PASSWORD: ${{ secrets.APPLE_APPLICATION_CERT_PASSWORD }}
           npm_config_arch: ${{ matrix.arch }}
           TARGET_ARCH: ${{ matrix.arch }}
       - name: Prepare testing environment
@@ -134,13 +123,11 @@ jobs:
         env:
           npm_config_arch: ${{ matrix.arch }}
       - name: Run unit tests
-        if: |
-          (runner.os == 'Windows' && matrix.arch == 'x64') || (runner.os == 'macOS' && matrix.arch == 'arm64')
+        if: matrix.arch == 'x64'
         run: yarn test:unit
       - name: Run script tests
         run: yarn test:script
-      - if: runner.os == 'Windows'
-        uses: ./.github/actions/setup-windows-signing
+      - uses: ./.github/actions/setup-windows-signing
         with:
           enabled: ${{ inputs.sign }}
           azure-client-id: ${{ secrets.AZURE_CODE_SIGNING_CLIENT_ID }}
@@ -155,9 +142,8 @@ jobs:
         uses: actions/upload-artifact@v7
         if: ${{ inputs.upload-artifacts }}
         with:
-          name: ${{matrix.friendlyName}}-${{matrix.arch}}
+          name: Windows-${{matrix.arch}}
           path: |
-            dist/GitHub Desktop U-${{matrix.arch}}.zip
             dist/GitHubDesktopU-*.nupkg
             dist/GitHubDesktopUSetup-${{matrix.arch}}.exe
             dist/GitHubDesktopUSetup-${{matrix.arch}}.msi
@@ -165,21 +151,16 @@ jobs:
             dist/bundle-hash.json
           if-no-files-found: error
   e2e-smoke:
-    name: E2E Smoke ${{ matrix.friendlyName }} ${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
+    # macOS variant removed — see the note on the `build` job above.
+    name: E2E Smoke Windows ${{ matrix.arch }}
+    runs-on: windows-2022
     permissions:
       contents: read
       id-token: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-14-xlarge
-            friendlyName: macOS
-            arch: arm64
-          - os: windows-2022
-            friendlyName: Windows
-            arch: x64
+        arch: [x64]
     timeout-minutes: 60
     environment: ${{ inputs.environment }}
     env:
@@ -202,19 +183,13 @@ jobs:
           DESKTOP_OAUTH_CLIENT_ID: ${{ secrets.DESKTOP_OAUTH_CLIENT_ID }}
           DESKTOP_OAUTH_CLIENT_SECRET:
             ${{ secrets.DESKTOP_OAUTH_CLIENT_SECRET }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APPLICATION_CERT: ${{ secrets.APPLE_APPLICATION_CERT }}
-          KEY_PASSWORD: ${{ secrets.APPLE_APPLICATION_CERT_PASSWORD }}
           npm_config_arch: ${{ matrix.arch }}
           TARGET_ARCH: ${{ matrix.arch }}
       - name: Prepare testing environment
         run: yarn test:setup
         env:
           npm_config_arch: ${{ matrix.arch }}
-      - if: runner.os == 'Windows'
-        uses: ./.github/actions/setup-windows-signing
+      - uses: ./.github/actions/setup-windows-signing
         with:
           enabled: ${{ inputs.sign }}
           azure-client-id: ${{ secrets.AZURE_CODE_SIGNING_CLIENT_ID }}
@@ -225,14 +200,7 @@ jobs:
           npm_config_arch: ${{ matrix.arch }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_CODE_SIGNING_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CODE_SIGNING_CLIENT_ID }}
-      - name: Install app on macOS
-        if: runner.os == 'macOS'
-        run: |
-          rm -rf "/Applications/GitHub Desktop U.app"
-          ditto "dist/GitHub Desktop U-darwin-arm64/GitHub Desktop U.app" "/Applications/GitHub Desktop U.app"
-          echo "DESKTOP_E2E_APP_PATH=/Applications/GitHub Desktop U.app/Contents/MacOS/GitHub Desktop U" >> "$GITHUB_ENV"
       - name: Install app on Windows
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           function Write-SquirrelLogs {
@@ -284,6 +252,6 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-${{matrix.friendlyName}}-${{matrix.arch}}
+          name: e2e-Windows-${{matrix.arch}}
           path: playwright-videos/**
           if-no-files-found: warn

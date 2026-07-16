@@ -43,8 +43,10 @@ The fork installs alongside official GitHub Desktop and shiftkey's `github-deskt
 
 ## Install
 
-- **Windows / macOS** — grab a `GitHubDesktopUSetup-x64.exe` or `GitHub Desktop U-<arch>.zip` artifact from a [CI run](https://github.com/Citrus-XR/github-desktop-unity3d/actions/workflows/ci.yml) (use **Run workflow** — artifacts are uploaded by default). Builds aren't code-signed, so Windows SmartScreen will complain; **More info → Run anyway**.
+- **Windows** — grab the `GitHubDesktopUSetup-x64.exe` asset from the latest [`-u` release on the Releases page](https://github.com/Citrus-XR/github-desktop-unity3d/releases). Fork builds carry an extra `-u<N>` suffix on the tag (e.g. `release-3.6.3-beta3-u1`); the plain upstream tags never contain `-u`, so filtering by that is the shortcut. Builds aren't code-signed, so Windows SmartScreen will complain; **More info → Run anyway**.
 - **Linux (Arch)** — see [`linux/README.md`](linux/README.md). Short form: `cd linux/aur/desktop-u && makepkg -si`. The PKGBUILD tracks `origin/development`, so re-running `makepkg -si` picks up new commits without editing anything.
+
+macOS isn't currently packaged — the fork doesn't have Apple Developer signing keys to produce a shippable `.app`, and the CI job that would build one is disabled.
 
 ## Where the code lives
 
