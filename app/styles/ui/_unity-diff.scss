@@ -347,6 +347,22 @@
     word-break: break-word;
     min-width: 0;
   }
+
+  // Whole-row added/removed: colour the field name too and strike removed rows
+  // through end-to-end, so a fully added or deleted serialized field reads as
+  // one unit instead of a gray label with a lone red/green scalar tacked on.
+  // Modified rows keep the before → after inline treatment and are untouched.
+  &.unity-status-added > .unity-property-key {
+    color: var(--color-new);
+  }
+  &.unity-status-removed > .unity-property-key {
+    color: var(--color-deleted);
+    text-decoration: line-through;
+  }
+  &.unity-status-removed > .unity-property-value {
+    text-decoration: line-through;
+    opacity: 0.75;
+  }
 }
 
 // The synthesized "model default" placeholder rendered when we don't know the
