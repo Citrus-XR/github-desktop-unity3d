@@ -23,6 +23,7 @@ import {
   MultiCommitOperationConflictState,
   IMultiCommitOperationState,
   CommitOptions,
+  FileListSortMode,
 } from '../../lib/app-state'
 import { assertNever, fatalError } from '../../lib/fatal-error'
 import {
@@ -4241,6 +4242,33 @@ export class Dispatcher {
     return this.appStore._setFilterExcludedFiles(
       repository,
       isExcludedFromCommit
+    )
+  }
+
+  public setFileListSortMode(
+    repository: Repository,
+    sortMode: FileListSortMode
+  ) {
+    return this.appStore._setFileListSortMode(repository, sortMode)
+  }
+
+  public setFilterHiddenExtensions(
+    repository: Repository,
+    hiddenExtensions: string
+  ) {
+    return this.appStore._setFilterHiddenExtensions(
+      repository,
+      hiddenExtensions
+    )
+  }
+
+  public setFilterKeepHiddenWithChangedSibling(
+    repository: Repository,
+    keepHiddenWithChangedSibling: boolean
+  ) {
+    return this.appStore._setFilterKeepHiddenWithChangedSibling(
+      repository,
+      keepHiddenWithChangedSibling
     )
   }
 

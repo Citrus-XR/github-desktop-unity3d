@@ -19,6 +19,7 @@ import {
   IMultiCommitOperationUndoState,
   IMultiCommitOperationState,
   IPullRequestState,
+  DEFAULT_FILE_LIST_FILTER,
 } from '../app-state'
 import { merge } from '../merge'
 import { DefaultCommitMessage } from '../../models/commit-message'
@@ -384,14 +385,7 @@ function getInitialRepositoryState(): IRepositoryState {
       stashEntry: null,
       currentBranchProtected: false,
       currentRepoRulesInfo: new RepoRulesInfo(),
-      fileListFilter: {
-        filterText: '',
-        isIncludedInCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
-        isExcludedFromCommit: false,
-      },
+      fileListFilter: { ...DEFAULT_FILE_LIST_FILTER },
     },
     selectedSection: RepositorySectionTab.Changes,
     branchesState: {

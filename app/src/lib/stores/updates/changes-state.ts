@@ -18,6 +18,10 @@ import { caseInsensitiveCompare } from '../../compare'
 import { IStatsStore } from '../../stats/stats-store'
 import { ManualConflictResolution } from '../../../models/manual-conflict-resolution'
 import { assertNever } from '../../fatal-error'
+import {
+  getFinalExtension,
+  parseHiddenExtensions,
+} from '../../hidden-extensions'
 
 /**
  * Internal shape of the return value from this response because the compiler
@@ -38,6 +42,16 @@ export function updateChangedFiles(
   const filesByID = new Map<string, WorkingDirectoryFileChange>()
   state.workingDirectory.files.forEach(f => filesByID.set(f.id, f))
 
+  // First-time appearances of a file whose extension is in the user's
+  // hidden-extensions list default to unchecked. That way a hidden file the
+  // user never sees can't be committed by accident, and a rescued sibling
+  // shows up already unchecked and waiting for an explicit tick.
+  const hiddenExtensions = parseHiddenExtensions(
+    state.fileListFilter.hiddenExtensions
+  )
+  const isHiddenExt = (path: string) =>
+    hiddenExtensions.size > 0 && hiddenExtensions.has(getFinalExtension(path))
+
   // Attempt to preserve the selection state for each file in the new
   // working directory state by looking at the current files
   const mergedFiles = status.workingDirectory.files
@@ -55,7 +69,7 @@ export function updateChangedFiles(
 
         return file.withSelection(existingFile.selection)
       } else {
-        return file
+        return isHiddenExt(file.path) ? file.withIncludeAll(false) : file
       }
     })
     .sort((x, y) => caseInsensitiveCompare(x.path, y.path))

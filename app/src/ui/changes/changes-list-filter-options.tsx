@@ -10,8 +10,10 @@ import {
 } from './filter-changes-logic'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
-import { IFileListFilterState } from '../../lib/app-state'
+import { FileListSortMode, IFileListFilterState } from '../../lib/app-state'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
+import { TextBox } from '../lib/text-box'
+import { RadioGroup } from '../lib/radio-group'
 import memoizeOne from 'memoize-one'
 import { Button } from '../lib/button'
 import classNames from 'classnames'
@@ -27,12 +29,17 @@ interface IChangesListFilterOptionsProps {
   readonly onFilterDeletedFiles: () => void
   readonly onFilterModifiedFiles: () => void
   readonly onFilterNewFiles: () => void
+  readonly onSortModeChanged: (mode: FileListSortMode) => void
+  readonly onHiddenExtensionsChanged: (value: string) => void
+  readonly onKeepHiddenWithChangedSiblingChanged: (value: boolean) => void
   readonly onClearAllFilters: () => void
 }
 
 interface IChangesListFilterOptionsState {
   readonly isFilterOptionsOpen: boolean
 }
+
+const SORT_MODE_KEYS: ReadonlyArray<FileListSortMode> = ['path', 'mtimeDesc']
 
 /**
  * Component to render filter options for the changes list.
@@ -121,6 +128,12 @@ export class ChangesListFilterOptions extends React.Component<
     this.closeFilterOptions()
   }
 
+  private onKeepHiddenWithChangedSiblingChanged = () => {
+    this.props.onKeepHiddenWithChangedSiblingChanged(
+      !this.props.fileListFilter.keepHiddenWithChangedSibling
+    )
+  }
+
   private onClearAllFilters = () => {
     this.props.onClearAllFilters()
     this.closeFilterOptions()
@@ -131,6 +144,15 @@ export class ChangesListFilterOptions extends React.Component<
     this.setState(prevState => ({
       isFilterOptionsOpen: !prevState.isFilterOptionsOpen,
     }))
+  }
+
+  private renderSortLabel = (key: FileListSortMode): string => {
+    switch (key) {
+      case 'path':
+        return 'Path'
+      case 'mtimeDesc':
+        return 'Modified time (newest first)'
+    }
   }
 
   private renderFilterOptions() {
@@ -213,6 +235,33 @@ export class ChangesListFilterOptions extends React.Component<
             }
             onChange={this.onFilterDeletedFiles}
             label={`Deleted files (${deletedFilesCount})`}
+          />
+        </div>
+        <div className="filter-options-section">
+          <h4 className="filter-options-section-title">Sort by</h4>
+          <RadioGroup<FileListSortMode>
+            selectedKey={this.props.fileListFilter.sortMode}
+            radioButtonKeys={SORT_MODE_KEYS}
+            onSelectionChanged={this.props.onSortModeChanged}
+            renderRadioButtonLabelContents={this.renderSortLabel}
+          />
+        </div>
+        <div className="filter-options-section">
+          <h4 className="filter-options-section-title">Hide extensions</h4>
+          <TextBox
+            value={this.props.fileListFilter.hiddenExtensions}
+            onValueChanged={this.props.onHiddenExtensionsChanged}
+            placeholder="e.g asset,DS_Store,meta"
+            ariaLabel="Extensions to hide (comma-separated, case-sensitive)"
+          />
+          <Checkbox
+            value={
+              this.props.fileListFilter.keepHiddenWithChangedSibling
+                ? CheckboxValue.On
+                : CheckboxValue.Off
+            }
+            onChange={this.onKeepHiddenWithChangedSiblingChanged}
+            label="Show when a same-name sibling is changed"
           />
         </div>
         {filtersActive && (

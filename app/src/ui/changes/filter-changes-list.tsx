@@ -20,7 +20,7 @@ import {
 import { Account } from '../../models/account'
 import { Author, UnknownAuthor } from '../../models/author'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
-import { CommitOptions, IFileListFilterState } from '../../lib/app-state'
+import { CommitOptions, FileListSortMode, IFileListFilterState } from '../../lib/app-state'
 import {
   isSafeFileExtension,
   DefaultEditorLabel,
@@ -67,10 +67,16 @@ import { Button } from '../lib/button'
 import { LinkButton } from '../lib/link-button'
 import { plural } from '../lib/plural'
 import {
+  computeRescuedPaths,
+  parseHiddenExtensions,
+} from '../../lib/hidden-extensions'
+import { sortByMtimeDesc } from '../../lib/sort-changes'
+import {
   isCommittingFileHiddenByFilter,
   getNoResultsMessage,
   hasActiveFilters,
   applyFilters,
+  countActiveFilterOptions,
 } from './filter-changes-logic'
 import { ChangesListFilterOptions } from './changes-list-filter-options'
 import { HookProgress } from '../../lib/git'
@@ -357,7 +363,10 @@ export class FilterChangesList extends React.Component<
   public constructor(props: IFilterChangesListProps) {
     super(props)
 
-    const listItems = this.createListItems(props.workingDirectory.files)
+    const listItems = this.createListItems(
+      props.workingDirectory.files,
+      props.fileListFilter.sortMode
+    )
     const groups = [listItems]
 
     this.state = {
@@ -378,19 +387,27 @@ export class FilterChangesList extends React.Component<
       !arrayEquals(
         nextProps.workingDirectory.files,
         this.props.workingDirectory.files
-      )
+      ) ||
+      nextProps.fileListFilter.sortMode !== this.props.fileListFilter.sortMode
     ) {
       this.setState({
         selectedItems: getSelectedItemsFromProps(nextProps),
-        groups: [this.createListItems(nextProps.workingDirectory.files)],
+        groups: [
+          this.createListItems(
+            nextProps.workingDirectory.files,
+            nextProps.fileListFilter.sortMode
+          ),
+        ],
       })
     }
   }
 
   private createListItems(
-    files: ReadonlyArray<WorkingDirectoryFileChange>
+    files: ReadonlyArray<WorkingDirectoryFileChange>,
+    sortMode: FileListSortMode
   ): IFilterListGroup<IChangesListItem> {
-    const items = files.map(file => ({
+    const ordered = sortMode === 'mtimeDesc' ? sortByMtimeDesc(files) : files
+    const items = ordered.map(file => ({
       text: [file.path],
       id: file.id,
       change: file,
@@ -1296,6 +1313,11 @@ export class FilterChangesList extends React.Component<
             onFilterDeletedFiles={this.onFilterDeletedFiles}
             onFilterModifiedFiles={this.onFilterModifiedFiles}
             onFilterNewFiles={this.onFilterNewFiles}
+            onSortModeChanged={this.onSortModeChanged}
+            onHiddenExtensionsChanged={this.onHiddenExtensionsChanged}
+            onKeepHiddenWithChangedSiblingChanged={
+              this.onKeepHiddenWithChangedSiblingChanged
+            }
             onClearAllFilters={this.onClearAllFilters}
             workingDirectory={this.props.workingDirectory}
           />
@@ -1313,11 +1335,29 @@ export class FilterChangesList extends React.Component<
     )
   }
 
+  // The rescue set + parsed hidden-extension set are the same for every item
+  // in a filter pass — cache them per (files identity, hiddenExtensions string)
+  // so `applyFilters` doesn't re-parse and re-scan for each row.
+  private cachedRescuedPaths = memoizeOne(
+    (
+      files: ReadonlyArray<WorkingDirectoryFileChange>,
+      hiddenExtensions: string
+    ): ReadonlySet<string> =>
+      computeRescuedPaths(
+        files.map(f => f.path),
+        parseHiddenExtensions(hiddenExtensions)
+      )
+  )
+
   private applyFilters = (item: IChangesListItem) => {
     return applyFilters(
       item,
       this.props.showChangesFilter,
-      this.props.fileListFilter
+      this.props.fileListFilter,
+      this.cachedRescuedPaths(
+        this.props.workingDirectory.files,
+        this.props.fileListFilter.hiddenExtensions
+      )
     )
   }
 
@@ -1356,11 +1396,7 @@ export class FilterChangesList extends React.Component<
             onSelectionChanged={this.onFileSelectionChanged}
             groups={this.state.groups}
             filterMethod={
-              this.props.fileListFilter.isIncludedInCommit ||
-              this.props.fileListFilter.isNewFile ||
-              this.props.fileListFilter.isModifiedFile ||
-              this.props.fileListFilter.isDeletedFile ||
-              this.props.fileListFilter.isExcludedFromCommit
+              countActiveFilterOptions(this.props.fileListFilter) > 0
                 ? this.applyFilters
                 : undefined
             }
@@ -1374,6 +1410,9 @@ export class FilterChangesList extends React.Component<
               filterDeletedFiles: this.props.fileListFilter.isDeletedFile,
               filterExcludedFiles:
                 this.props.fileListFilter.isExcludedFromCommit,
+              hiddenExtensions: this.props.fileListFilter.hiddenExtensions,
+              keepHiddenWithChangedSibling:
+                this.props.fileListFilter.keepHiddenWithChangedSibling,
             }}
             onItemContextMenu={this.onItemContextMenu}
             renderCustomFilterRow={this.renderFilterRow}
@@ -1529,6 +1568,29 @@ export class FilterChangesList extends React.Component<
     this.props.dispatcher.setFilterNewFiles(this.props.repository, false)
     this.props.dispatcher.setFilterModifiedFiles(this.props.repository, false)
     this.props.dispatcher.setFilterDeletedFiles(this.props.repository, false)
+    this.props.dispatcher.setFilterHiddenExtensions(this.props.repository, '')
+    this.props.dispatcher.setFilterKeepHiddenWithChangedSibling(
+      this.props.repository,
+      false
+    )
+  }
+
+  private onSortModeChanged = (mode: FileListSortMode) => {
+    this.props.dispatcher.setFileListSortMode(this.props.repository, mode)
+  }
+
+  private onHiddenExtensionsChanged = (value: string) => {
+    this.props.dispatcher.setFilterHiddenExtensions(
+      this.props.repository,
+      value
+    )
+  }
+
+  private onKeepHiddenWithChangedSiblingChanged = (value: boolean) => {
+    this.props.dispatcher.setFilterKeepHiddenWithChangedSibling(
+      this.props.repository,
+      value
+    )
   }
 
   private onChangedFileFocus = (changeListItem: IChangesListItem) => {

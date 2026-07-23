@@ -1,5 +1,6 @@
 import * as Path from 'path'
-import { writeFile } from 'fs/promises'
+import { writeFile, stat } from 'fs/promises'
+import { expandLinkedFileIds } from '../hidden-extensions'
 import {
   AccountsStore,
   CloningRepositoriesStore,
@@ -148,7 +149,9 @@ import {
   ChangesWorkingDirectorySelection,
   isRebaseConflictState,
   isCherryPickConflictState,
+  FileListSortMode,
   IFileListFilterState,
+  IChangesState,
   isMergeConflictState,
   IMultiCommitOperationState,
   ConflictState,
@@ -566,6 +569,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private currentBranchPruner: BranchPruner | null = null
 
   private readonly repositoryIndicatorUpdater: RepositoryIndicatorUpdater
+
+  // Per-repo monotonic counter used to fence stale mtime-attach walks: each
+  // walk captures the current value, and a resolver only writes if the value
+  // is still current. Prevents an older `attachFileMtimes` from clobbering a
+  // newer status snapshot on repo switch or rapid successive status loads.
+  private readonly mtimeGen = new Map<string, number>()
 
   private showWelcomeFlow = false
   private focusCommitMessage = false
@@ -2905,6 +2914,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
       conflictState: updateConflictState(state, status, this.statsStore),
     }))
 
+    this._afterStatusLoad(repository)
+
     this.updateMultiCommitOperationConflictsIfFound(repository)
     await this.initializeMultiCommitOperationIfConflictsFound(
       repository,
@@ -2920,6 +2931,93 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.updateChangesWorkingDirectoryDiff(repository)
 
     return status
+  }
+
+  /**
+   * Fork seam for post-status-load work. Kept intentionally minimal so an
+   * upstream `_loadStatus` PR only has to preserve the one-line call site;
+   * add new hooks here rather than sprinkling calls through `_loadStatus`.
+   */
+  private _afterStatusLoad(repository: Repository) {
+    this.attachFileMtimes(repository)
+  }
+
+  /**
+   * Batch-stat the changed files and attach mtimes back onto the working
+   * directory model, so the UI can offer a "modified time" sort. Deleted or
+   * unreadable files keep mtime=null and sort last. No-op unless the user
+   * actually enabled `mtimeDesc` sort. Fire-and-forget: we don't block the
+   * status load on the disk walk, and per-repo generation tokens drop stale
+   * walks so a repo switch or a follow-up status load can't clobber the
+   * newer state with older mtimes.
+   */
+  private attachFileMtimes(repository: Repository) {
+    const state = this.repositoryStateCache.get(repository).changesState
+    if (state.fileListFilter.sortMode !== 'mtimeDesc') {
+      return
+    }
+    const filesToStat = state.workingDirectory.files.filter(
+      f => f.status.kind !== AppFileStatusKind.Deleted
+    )
+    if (filesToStat.length === 0) {
+      return
+    }
+
+    const repoKey = String(repository.id)
+    const gen = (this.mtimeGen.get(repoKey) ?? 0) + 1
+    this.mtimeGen.set(repoKey, gen)
+
+    const repoPath = repository.path
+    const targets = filesToStat.map(f => f.id)
+    Promise.all(
+      filesToStat.map(async f => {
+        try {
+          const s = await stat(Path.join(repoPath, f.path))
+          return { id: f.id, mtimeMs: s.mtimeMs }
+        } catch {
+          return { id: f.id, mtimeMs: null as number | null }
+        }
+      })
+    ).then(results => {
+      // Drop stale walks (repo switched, or a newer status load queued a
+      // fresher one) — the newer walk owns the write.
+      if (this.mtimeGen.get(repoKey) !== gen) {
+        return
+      }
+      const mtimeById = new Map<string, number | null>()
+      results.forEach(r => mtimeById.set(r.id, r.mtimeMs))
+      let changed = false
+      this.repositoryStateCache.updateChangesState(repository, current => {
+        // Bail if the file set was replaced under us (another status load
+        // happened while we were stat'ing) — the follow-up attach will handle it.
+        const stillCurrent = targets.every(id =>
+          current.workingDirectory.files.some(f => f.id === id)
+        )
+        if (!stillCurrent) {
+          return { workingDirectory: current.workingDirectory }
+        }
+        const nextFiles = current.workingDirectory.files.map(f => {
+          if (!mtimeById.has(f.id)) {
+            return f
+          }
+          const m = mtimeById.get(f.id) ?? null
+          if (f.mtimeMs === m) {
+            return f
+          }
+          changed = true
+          return f.withMtime(m)
+        })
+        if (!changed) {
+          return { workingDirectory: current.workingDirectory }
+        }
+        return {
+          workingDirectory: WorkingDirectoryStatus.fromFiles(nextFiles),
+        }
+      })
+      if (changed) {
+        this.emitUpdate()
+      }
+    })
   }
 
   /**
@@ -3789,9 +3887,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const modifiedIds = new Set<string>(files.map(f => f.id))
 
     this.repositoryStateCache.updateChangesState(repository, state => {
+      const linked = this.linkForToggle(state, modifiedIds)
       const workingDirectory = WorkingDirectoryStatus.fromFiles(
         state.workingDirectory.files.map(f =>
-          modifiedIds.has(f.id) ? f.withIncludeAll(include) : f
+          linked.has(f.id) ? f.withIncludeAll(include) : f
         )
       )
 
@@ -3800,6 +3899,23 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.emitUpdate()
     return Promise.resolve()
+  }
+
+  /**
+   * Fork seam: expand a set of about-to-be-toggled file ids to also include
+   * any rescued/rescuing sibling when the linking mode is on. Kept as a small
+   * helper so the include/exclude path stays a one-liner and upstream
+   * refactors of `_changeFileIncluded` only conflict here.
+   */
+  private linkForToggle(
+    state: IChangesState,
+    initialIds: ReadonlySet<string>
+  ): ReadonlySet<string> {
+    return expandLinkedFileIds(
+      state.workingDirectory.files,
+      state.fileListFilter,
+      initialIds
+    )
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
@@ -10352,6 +10468,31 @@ export class AppStore extends TypedBaseStore<IAppState> {
     isExcludedFromCommit: boolean
   ) {
     this._updateFileListFilter(repository, { isExcludedFromCommit })
+  }
+
+  public _setFileListSortMode(repository: Repository, sortMode: FileListSortMode) {
+    const prev = this.repositoryStateCache.get(repository).changesState
+      .fileListFilter.sortMode
+    this._updateFileListFilter(repository, { sortMode })
+    if (prev !== 'mtimeDesc' && sortMode === 'mtimeDesc') {
+      // Flip: eagerly attach mtimes so the list re-sorts immediately instead
+      // of waiting for the next status refresh.
+      this.attachFileMtimes(repository)
+    }
+  }
+
+  public _setFilterHiddenExtensions(
+    repository: Repository,
+    hiddenExtensions: string
+  ) {
+    this._updateFileListFilter(repository, { hiddenExtensions })
+  }
+
+  public _setFilterKeepHiddenWithChangedSibling(
+    repository: Repository,
+    keepHiddenWithChangedSibling: boolean
+  ) {
+    this._updateFileListFilter(repository, { keepHiddenWithChangedSibling })
   }
 
   public async _createPushProtectionBypass(

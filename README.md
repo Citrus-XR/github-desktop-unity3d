@@ -4,7 +4,7 @@
 
 A GitHub Desktop fork that makes Unity source control readable. Scene, prefab, material, controller, and animation diffs render the way the Unity Inspector does — without opening Unity, without a project import step, straight off the git-tracked YAML.
 
-Only the diff renderer is new. The commit view, push / pull, branch UI, history, GitHub integration and every other part of Desktop are untouched upstream code, so nothing you already rely on has moved or changed.
+The diff renderer is the big addition; the changes-list Filter Options popover picks up a few small extras (sort-by-mtime, hide-by-extension, sibling rescue) noted below. Push / pull, branch UI, history, GitHub integration and every other part of Desktop are untouched upstream code, so nothing you already rely on has moved or changed.
 
 ## Supported formats
 
@@ -36,6 +36,14 @@ And you *can* ask for one. The diff toolbar has a **Unity Diff** toggle that fli
 **Model / FBX fileID resolution.** Prefabs and scenes often reference objects *inside* imported `.fbx` files, and Unity generates those fileIDs by hashing the object's hierarchy path plus class name (xxHash64). The fork reads the FBX directly with [`fbx-parser`](https://github.com/picode7/fbx-parser) — just the Model tree, no geometry — and re-derives the same ids with [`xxhashjs`](https://github.com/pierrec/js-xxhash). The algorithm was cross-checked against [V-Sekai's `unidot_importer`](https://github.com/V-Sekai/unidot_importer), whose Godot port relies on it for `.unitypackage` conversion. Both deps are pure JS, so the Electron packaging story is unchanged.
 
 **Off the main thread.** YAML parsing, prefab expansion, and the diff run in a worker. The eager diff carries only the changed documents; other documents stream in over a separate IPC channel when you click a node. 100k-document scenes stay responsive.
+
+## Changes list extras
+
+Small fork-only additions to Desktop's Filter Options popover (the commit view, next to the file search box):
+
+- **Sort by modified time.** New "Sort by" section — swap between path (default) and modified time descending. mtime is stat'd from disk when the mode is enabled, so files you just touched bubble to the top.
+- **Hide by extension.** Comma-separated, case-sensitive. `asset,DS_Store,meta` hides anything whose final extension matches. Files hidden this way also start unchecked, so a filter you don't see doesn't get committed by accident.
+- **Sibling rescue.** With "Show when a same-name sibling is changed" on, a hidden-ext file (e.g. `Foo.cs.meta`) reappears whenever another changed file in the same directory shares its root name (`Foo.cs`, `Foo.png`, …). Its checkbox links to the rescuer's — check `.cs`, `.meta` follows, and vice versa. Useful for Unity where you almost always want to commit the `.meta` alongside the `.cs`, but the rule is generic.
 
 ## Coexisting with upstream
 

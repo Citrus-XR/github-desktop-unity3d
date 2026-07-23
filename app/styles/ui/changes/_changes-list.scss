@@ -63,6 +63,30 @@
         margin: var(--spacing) 0;
       }
 
+      // Sort / hide-extensions / rescue sections. The popover root sets
+      // `text-align: right` for the header + count badge; sections opt back
+      // to left so the RadioGroup labels and the TextBox line up on the left
+      // edge of the popover the way the checkbox rows above them do.
+      .filter-options-section {
+        text-align: left;
+        margin-top: var(--spacing);
+
+        .filter-options-section-title {
+          margin: 0 0 var(--spacing-half) 0;
+          font-size: var(--font-size);
+          font-weight: var(--font-weight-semibold);
+        }
+
+        // .text-box-component defaults to flex: 1, which stretches the
+        // wrapper vertically inside a column container and leaves visible
+        // empty space below the actual <input>. Lock it to its natural
+        // height and give the checkbox room to breathe underneath.
+        > .text-box-component {
+          flex: 0 0 auto;
+          margin-bottom: var(--spacing-half);
+        }
+      }
+
       .filter-options-footer {
         padding: var(--spacing-half) 0 var(--spacing) 0;
         margin-top: var(--spacing-quarter);

@@ -11,7 +11,7 @@ import {
   hasActiveFilters,
   applyFilters,
 } from '../../src/ui/changes/filter-changes-logic'
-import { IFileListFilterState } from '../../src/lib/app-state'
+import { IFileListFilterState, DEFAULT_FILE_LIST_FILTER } from '../../src/lib/app-state'
 import { IChangesListItem } from '../../src/ui/changes/filter-changes-list'
 
 // Helper function to create a test file
@@ -56,12 +56,7 @@ describe('filter-changes-logic', () => {
     describe('when no filters are active', () => {
       it('should show all files', () => {
         const filters: IFileListFilterState = {
-          filterText: '',
-          isIncludedInCommit: false,
-          isExcludedFromCommit: false,
-          isNewFile: false,
-          isModifiedFile: false,
-          isDeletedFile: false,
+          ...DEFAULT_FILE_LIST_FILTER,
         }
 
         const newFile = createTestItem(
@@ -89,12 +84,9 @@ describe('filter-changes-logic', () => {
     describe('when using AND logic', () => {
       it('should show files matching ALL active filters', () => {
         const filters: IFileListFilterState = {
-          filterText: '',
+          ...DEFAULT_FILE_LIST_FILTER,
           isIncludedInCommit: true,
-          isExcludedFromCommit: false,
           isNewFile: true,
-          isModifiedFile: false,
-          isDeletedFile: false,
         }
 
         // Staged new file - matches both filters
@@ -123,12 +115,9 @@ describe('filter-changes-logic', () => {
 
       it('should handle conflicting filters correctly', () => {
         const filters: IFileListFilterState = {
-          filterText: '',
+          ...DEFAULT_FILE_LIST_FILTER,
           isIncludedInCommit: true,
-          isExcludedFromCommit: true, // Both can't be true at same time
-          isNewFile: false,
-          isModifiedFile: false,
-          isDeletedFile: false,
+          isExcludedFromCommit: true, // Both can't be true at same time,
         }
 
         const stagedFile = createTestItem(
@@ -149,12 +138,8 @@ describe('filter-changes-logic', () => {
 
       it('should treat untracked files as new files', () => {
         const filters: IFileListFilterState = {
-          filterText: '',
-          isIncludedInCommit: false,
-          isExcludedFromCommit: false,
+          ...DEFAULT_FILE_LIST_FILTER,
           isNewFile: true,
-          isModifiedFile: false,
-          isDeletedFile: false,
         }
 
         const untrackedFile = {
@@ -172,12 +157,8 @@ describe('filter-changes-logic', () => {
 
       it('should match excluded files when excluded filter is active', () => {
         const filters: IFileListFilterState = {
-          filterText: '',
-          isIncludedInCommit: false,
+          ...DEFAULT_FILE_LIST_FILTER,
           isExcludedFromCommit: true,
-          isNewFile: false,
-          isModifiedFile: false,
-          isDeletedFile: false,
         }
 
         const excludedFile = createTestItem(
@@ -200,12 +181,7 @@ describe('filter-changes-logic', () => {
   describe('isCommittingFileHiddenByFilter', () => {
     it('should return false when no filters are active', () => {
       const filters: IFileListFilterState = {
-        filterText: '',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
+        ...DEFAULT_FILE_LIST_FILTER,
       }
 
       const fileIds = ['file1', 'file2']
@@ -222,12 +198,8 @@ describe('filter-changes-logic', () => {
 
     it('should return true when committing files not in filtered list', () => {
       const filters: IFileListFilterState = {
-        filterText: '',
+        ...DEFAULT_FILE_LIST_FILTER,
         isIncludedInCommit: true,
-        isExcludedFromCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
       }
 
       const fileIds = ['file1', 'file2', 'file3']
@@ -244,12 +216,9 @@ describe('filter-changes-logic', () => {
 
     it('should return false when all files remain visible after filtering', () => {
       const filters: IFileListFilterState = {
+        ...DEFAULT_FILE_LIST_FILTER,
         filterText: 'src',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
-        isNewFile: false,
         isModifiedFile: true,
-        isDeletedFile: false,
       }
 
       const fileIds = ['file1', 'file2']
@@ -268,12 +237,7 @@ describe('filter-changes-logic', () => {
   describe('getNoResultsMessage', () => {
     it('should return undefined when no filters active', () => {
       const filters: IFileListFilterState = {
-        filterText: '',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
+        ...DEFAULT_FILE_LIST_FILTER,
       }
 
       assert.equal(getNoResultsMessage(filters), undefined)
@@ -281,12 +245,8 @@ describe('filter-changes-logic', () => {
 
     it('should return message with text filter', () => {
       const filters: IFileListFilterState = {
+        ...DEFAULT_FILE_LIST_FILTER,
         filterText: 'test',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
       }
 
       const message = getNoResultsMessage(filters)
@@ -295,12 +255,9 @@ describe('filter-changes-logic', () => {
 
     it('should return message with multiple filters', () => {
       const filters: IFileListFilterState = {
-        filterText: '',
+        ...DEFAULT_FILE_LIST_FILTER,
         isIncludedInCommit: true,
-        isExcludedFromCommit: false,
         isNewFile: true,
-        isModifiedFile: false,
-        isDeletedFile: false,
       }
 
       const message = getNoResultsMessage(filters)
@@ -310,10 +267,9 @@ describe('filter-changes-logic', () => {
 
     it('should format three or more filters with commas and and', () => {
       const filters: IFileListFilterState = {
+        ...DEFAULT_FILE_LIST_FILTER,
         filterText: 'src',
         isIncludedInCommit: true,
-        isExcludedFromCommit: false,
-        isNewFile: false,
         isModifiedFile: true,
         isDeletedFile: true,
       }
@@ -328,12 +284,7 @@ describe('filter-changes-logic', () => {
   describe('hasActiveFilters', () => {
     it('should return false when no text or filter options are active', () => {
       const filters: IFileListFilterState = {
-        filterText: '',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
-        isNewFile: false,
-        isModifiedFile: false,
-        isDeletedFile: false,
+        ...DEFAULT_FILE_LIST_FILTER,
       }
 
       assert.equal(hasActiveFilters(filters), false)
@@ -342,24 +293,16 @@ describe('filter-changes-logic', () => {
     it('should return true when either text or filter options are active', () => {
       assert.equal(
         hasActiveFilters({
+          ...DEFAULT_FILE_LIST_FILTER,
           filterText: 'src',
-          isIncludedInCommit: false,
-          isExcludedFromCommit: false,
-          isNewFile: false,
-          isModifiedFile: false,
-          isDeletedFile: false,
         }),
         true
       )
 
       assert.equal(
         hasActiveFilters({
-          filterText: '',
-          isIncludedInCommit: false,
-          isExcludedFromCommit: false,
-          isNewFile: false,
+          ...DEFAULT_FILE_LIST_FILTER,
           isModifiedFile: true,
-          isDeletedFile: false,
         }),
         true
       )
@@ -375,16 +318,12 @@ describe('filter-changes-logic', () => {
       )
 
       const filters: IFileListFilterState = {
-        filterText: '',
-        isIncludedInCommit: false,
-        isExcludedFromCommit: false,
+        ...DEFAULT_FILE_LIST_FILTER,
         isNewFile: true,
-        isModifiedFile: false,
-        isDeletedFile: false,
       }
 
-      assert.equal(applyFilters(item, false, filters), true)
-      assert.equal(applyFilters(item, true, filters), false)
+      assert.equal(applyFilters(item, false, filters, new Set()), true)
+      assert.equal(applyFilters(item, true, filters, new Set()), false)
     })
   })
 })

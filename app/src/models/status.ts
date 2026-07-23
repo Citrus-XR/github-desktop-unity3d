@@ -297,12 +297,20 @@ export class WorkingDirectoryFileChange extends FileChange {
    * @param path The relative path to the file in the repository.
    * @param status The status of the change to the file.
    * @param selection Contains the selection details for this file - all, nothing or partial.
-   * @param oldPath The original path in the case of a renamed file.
+   * @param mtimeMs Last-modified time in milliseconds since epoch, or null if
+   *   unknown (deleted, unreadable, or not yet stat'd). Used by the UI to
+   *   offer a mtime-desc sort of the changes list.
+   *
+   * FORK-NOTE: `mtimeMs` is a fork-only tail parameter. If an upstream PR ever
+   * adds its own 4th constructor argument, land it AFTER `mtimeMs` and update
+   * every call site — see `withSelection`/`withMtime` below and the git status
+   * loader in `app/src/lib/git/status.ts`.
    */
   public constructor(
     path: string,
     status: AppFileStatus,
-    public readonly selection: DiffSelection
+    public readonly selection: DiffSelection,
+    public readonly mtimeMs: number | null = null
   ) {
     super(path, status)
   }
@@ -318,7 +326,22 @@ export class WorkingDirectoryFileChange extends FileChange {
 
   /** Create a new WorkingDirectoryFileChange with the given diff selection. */
   public withSelection(selection: DiffSelection): WorkingDirectoryFileChange {
-    return new WorkingDirectoryFileChange(this.path, this.status, selection)
+    return new WorkingDirectoryFileChange(
+      this.path,
+      this.status,
+      selection,
+      this.mtimeMs
+    )
+  }
+
+  /** Create a new WorkingDirectoryFileChange with the given mtime. */
+  public withMtime(mtimeMs: number | null): WorkingDirectoryFileChange {
+    return new WorkingDirectoryFileChange(
+      this.path,
+      this.status,
+      this.selection,
+      mtimeMs
+    )
   }
 
   public isIncludedInCommit(): boolean {

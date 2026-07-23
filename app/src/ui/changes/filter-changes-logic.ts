@@ -1,22 +1,42 @@
 import { IFileListFilterState } from '../../lib/app-state'
+import {
+  getFinalExtension,
+  parseHiddenExtensions,
+} from '../../lib/hidden-extensions'
 import { IChangesListItem } from './filter-changes-list'
 import memoizeOne from 'memoize-one'
 
+const EMPTY_PATH_SET: ReadonlySet<string> = new Set<string>()
+
 /**
- * Apply filter options to determine if a file should be shown
- * Uses AND logic - file must satisfy ALL active filters
- * Note: This is applied after the filterText has been applied
+ * Apply filter options to determine if a file should be shown.
+ * Uses AND logic - file must satisfy ALL active filters.
+ * Note: This is applied after the filterText has been applied.
  */
 export function applyFilterOptions(
   item: IChangesListItem,
-  filters: IFileListFilterState
+  filters: IFileListFilterState,
+  rescuedPaths: ReadonlySet<string> = EMPTY_PATH_SET
 ): boolean {
-  // If no filters are active, show all files
-  if (countActiveFilterOptions(filters) === 0) {
-    return true
+  const { change } = item
+
+  const hiddenExtensions = parseHiddenExtensions(filters.hiddenExtensions)
+  if (hiddenExtensions.size > 0) {
+    const ext = getFinalExtension(change.path)
+    if (hiddenExtensions.has(ext)) {
+      if (
+        !filters.keepHiddenWithChangedSibling ||
+        !rescuedPaths.has(change.path)
+      ) {
+        return false
+      }
+    }
   }
 
-  const { change } = item
+  // If no status filters are active, don't require any of them.
+  if (countActiveStatusFilters(filters) === 0) {
+    return true
+  }
 
   if (filters.isIncludedInCommit && !change.isIncludedInCommit()) {
     return false
@@ -38,13 +58,12 @@ export function applyFilterOptions(
     return false
   }
 
-  // File matches all active filters
   return true
 }
 
 /**
- * Check if any files being committed are hidden by the current filter
- * Memoized to avoid recalculating for the same inputs
+ * Check if any files being committed are hidden by the current filter.
+ * Memoized to avoid recalculating for the same inputs.
  */
 export const isCommittingFileHiddenByFilter = memoizeOne(
   (
@@ -71,9 +90,7 @@ export const isCommittingFileHiddenByFilter = memoizeOne(
   }
 )
 
-/**
- * Generate message when no files match filters
- */
+/** Generate message when no files match filters. */
 export function getNoResultsMessage(
   filters: IFileListFilterState
 ): string | undefined {
@@ -107,6 +124,10 @@ export function getNoResultsMessage(
     activeFilters.push('Deleted files')
   }
 
+  if (parseHiddenExtensions(filters.hiddenExtensions).size > 0) {
+    activeFilters.push(`Hiding extensions: ${filters.hiddenExtensions}`)
+  }
+
   if (activeFilters.length === 0) {
     return undefined
   }
@@ -125,13 +146,7 @@ export function getNoResultsMessage(
   return `Sorry, I can't find any changed files matching the following filters: ${filterList}`
 }
 
-/**
- * Count the number of active filter options
- * Note: This does not include the filterText filter
- */
-export function countActiveFilterOptions(
-  filters: IFileListFilterState
-): number {
+function countActiveStatusFilters(filters: IFileListFilterState): number {
   return [
     filters.isIncludedInCommit,
     filters.isNewFile,
@@ -142,26 +157,39 @@ export function countActiveFilterOptions(
 }
 
 /**
- * Check if there are any active filters
+ * Count the number of active filter options.
+ * Note: This does not include the filterText filter.
  */
+export function countActiveFilterOptions(
+  filters: IFileListFilterState
+): number {
+  let count = countActiveStatusFilters(filters)
+  if (parseHiddenExtensions(filters.hiddenExtensions).size > 0) {
+    count += 1
+  }
+  return count
+}
+
+/** Check if there are any active filters. */
 export function hasActiveFilters(filters: IFileListFilterState): boolean {
   return filters.filterText !== '' || countActiveFilterOptions(filters) > 0
 }
 
 /**
- * Apply filters to a changes list item
- * Memoized to avoid recalculating for the same inputs
+ * Apply filters to a changes list item.
+ * Memoized to avoid recalculating for the same inputs.
  */
 export const applyFilters = memoizeOne(
   (
     item: IChangesListItem,
     showChangesFilter: boolean,
-    filters: IFileListFilterState
+    filters: IFileListFilterState,
+    rescuedPaths: ReadonlySet<string>
   ) => {
     if (!showChangesFilter) {
       return true
     }
 
-    return applyFilterOptions(item, filters)
+    return applyFilterOptions(item, filters, rescuedPaths)
   }
 )

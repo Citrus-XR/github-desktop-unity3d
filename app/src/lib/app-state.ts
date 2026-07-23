@@ -863,6 +863,9 @@ export interface IChangesState {
 /**
  * State interface for file list filtering options
  */
+/** Ordering applied to the changes list before filtering. */
+export type FileListSortMode = 'path' | 'mtimeDesc'
+
 export interface IFileListFilterState {
   /** The text entered into the filter text box */
   readonly filterText: string
@@ -881,6 +884,40 @@ export interface IFileListFilterState {
 
   /** Whether to filter and show only deleted files */
   readonly isDeletedFile: boolean
+
+  /** How the changes list is ordered. Applied at the UI layer. */
+  readonly sortMode: FileListSortMode
+
+  /**
+   * Raw, comma-separated extensions to hide from the changes list (matched
+   * case-sensitively against the file's final extension, sans leading dot).
+   * Empty string disables the filter.
+   */
+  readonly hiddenExtensions: string
+
+  /**
+   * When true, a file whose extension is in {@link hiddenExtensions} is
+   * rescued (kept visible) if any other changed file in the same directory
+   * shares its basename (the segment before the first dot, case-sensitive)
+   * and is itself NOT hidden. Rescued files start unchecked and link their
+   * checkbox to their rescuing sibling.
+   */
+  readonly keepHiddenWithChangedSibling: boolean
+}
+
+/** Default state for the changes-list filter — shared by the store, the
+ * repository-state cache, and the test helpers so a new upstream field only
+ * has to land here. */
+export const DEFAULT_FILE_LIST_FILTER: IFileListFilterState = {
+  filterText: '',
+  isIncludedInCommit: false,
+  isExcludedFromCommit: false,
+  isNewFile: false,
+  isModifiedFile: false,
+  isDeletedFile: false,
+  sortMode: 'path',
+  hiddenExtensions: '',
+  keepHiddenWithChangedSibling: false,
 }
 
 /**

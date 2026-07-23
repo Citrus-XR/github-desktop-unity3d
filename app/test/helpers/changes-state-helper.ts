@@ -1,4 +1,8 @@
-import { IChangesState, ChangesSelectionKind } from '../../src/lib/app-state'
+import {
+  IChangesState,
+  ChangesSelectionKind,
+  DEFAULT_FILE_LIST_FILTER,
+} from '../../src/lib/app-state'
 import { WorkingDirectoryStatus } from '../../src/models/status'
 import { merge } from '../../src/lib/merge'
 import { IStatusResult } from '../../src/lib/git'
@@ -22,14 +26,7 @@ export function createState<K extends keyof IChangesState>(
     stashEntry: null,
     currentBranchProtected: false,
     currentRepoRulesInfo: new RepoRulesInfo(),
-    fileListFilter: {
-      filterText: '',
-      isIncludedInCommit: false,
-      isNewFile: false,
-      isModifiedFile: false,
-      isDeletedFile: false,
-      isExcludedFromCommit: false,
-    },
+    fileListFilter: { ...DEFAULT_FILE_LIST_FILTER },
   }
 
   return merge(baseChangesState, pick)
