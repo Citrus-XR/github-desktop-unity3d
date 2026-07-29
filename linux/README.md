@@ -98,6 +98,26 @@ still get new upstream code via the branch-tracked `source=` on the
 next `yay -Syu` even without a new AUR push, but their PKGBUILD copy
 stays in sync only if we push updates.
 
+## Why the desktop entry is named `github-desktop-u`
+
+The package, the binary and the install prefix are all `desktop-u`, but
+`linux/github-desktop-u.desktop` and the hicolor icons it references are
+not. A desktop shell links a running window back to its launcher — and
+so to its icon — by matching the app id the window reports against the
+basename of a `.desktop` file. Electron derives that id from
+`productName` ("GitHub Desktop U") by lowercasing it and replacing
+spaces with hyphens, giving `github-desktop-u` for both the Wayland
+`xdg_toplevel` app_id and the X11 `WM_CLASS`. Neither `--class` nor
+`CHROME_DESKTOP=` changes it (both were tried against the packaged
+build; the reported id stayed `github-desktop-u`), so the file has to
+move to the app rather than the other way round. `StartupWMClass` and
+`Icon` use the same id for consistency.
+
+Naming the entry after the package instead leaves the window with a
+blank icon in the task manager while the launcher in the application
+menu looks fine — the menu reads the `.desktop` file directly and never
+needs the match.
+
 ## Why we bundle Node 24 instead of using system `nodejs`
 
 Arch's current `nodejs` is 26.x. Its stream handling breaks

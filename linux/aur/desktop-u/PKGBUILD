@@ -112,13 +112,17 @@ package() {
 exec /opt/desktop-u/desktop-u "$@"
 EOF
 
-  install -Dm644 linux/desktop-u.desktop \
-    "$pkgdir/usr/share/applications/desktop-u.desktop"
+  # `github-desktop-u`, not `$pkgname`: the desktop entry and the icon it
+  # points at are keyed by the app id Electron reports for its windows, which
+  # is derived from productName rather than from the package or binary name.
+  # See the header of linux/github-desktop-u.desktop.
+  install -Dm644 linux/github-desktop-u.desktop \
+    "$pkgdir/usr/share/applications/github-desktop-u.desktop"
 
   local size
   for size in 32 64 128 256 512 1024; do
     install -Dm644 "app/static/linux/logos/${size}x${size}.png" \
-      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/desktop-u.png"
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/github-desktop-u.png"
   done
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

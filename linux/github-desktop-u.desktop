@@ -1,0 +1,21 @@
+# The basename of this file has to be the app id Electron reports, because
+# that id is what a desktop shell matches a running window against to find
+# its launcher — and therefore its icon. Electron derives the id from
+# `productName` ("GitHub Desktop U") by lowercasing it and turning spaces
+# into hyphens, and uses it for both the Wayland `xdg_toplevel` app_id and
+# the X11 WM_CLASS; neither `--class` nor `CHROME_DESKTOP` overrides it.
+# So this is `github-desktop-u.desktop`, not `desktop-u.desktop` after the
+# package/binary name. Icon and StartupWMClass follow the same id.
+[Desktop Entry]
+Type=Application
+Name=GitHub Desktop U
+GenericName=Git Repository Manager
+Comment=Simple collaboration from your desktop
+Exec=desktop-u %U
+Icon=github-desktop-u
+Terminal=false
+StartupNotify=true
+StartupWMClass=github-desktop-u
+Categories=Development;GTK;
+MimeType=x-scheme-handler/x-github-desktop-u;
+Keywords=git;github;version-control;
