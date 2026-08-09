@@ -188,9 +188,9 @@ export interface IUnitySequenceDiffRow {
  * LCS-based diff of two property sequences (e.g. `m_Materials`, `m_Component`).
  * Positional diffing marks every element after a single-element insertion as
  * modified; LCS matches equal elements around the change so the same edit
- * shows as one 'added' row. An immediately-adjacent (removed, added) pair is
- * coalesced into a 'modified' row so an in-place element mutation reads as
- * one entry rather than two.
+ * shows as one 'added' row. Contiguous added/removed edit blocks are paired
+ * into 'modified' rows so in-place element mutations read as one entry rather
+ * than a deletion followed by an insertion.
  */
 export const diffPropertySequence = (
   before: ReadonlyArray<UnityPropertyValue>,
@@ -258,24 +258,29 @@ export const diffPropertySequence = (
     j--
   }
   const coalesced = new Array<IUnitySequenceDiffRow>()
-  for (let k = 0; k < rows.length; k++) {
-    const cur = rows[k]
-    const next = rows[k + 1]
-    if (
-      cur.status === 'removed' &&
-      next !== undefined &&
-      next.status === 'added'
-    ) {
+  for (let start = 0; start < rows.length; ) {
+    if (rows[start].status === 'unchanged') {
+      coalesced.push(rows[start++])
+      continue
+    }
+    let end = start
+    while (end < rows.length && rows[end].status !== 'unchanged') {
+      end++
+    }
+    const block = rows.slice(start, end)
+    const added = block.filter(row => row.status === 'added')
+    const removed = block.filter(row => row.status === 'removed')
+    const pairCount = Math.min(added.length, removed.length)
+    for (let i = 0; i < pairCount; i++) {
       coalesced.push({
-        index: next.index,
-        before: cur.before,
-        after: next.after,
+        index: added[i].index,
+        before: removed[i].before,
+        after: added[i].after,
         status: 'modified',
       })
-      k++
-    } else {
-      coalesced.push(cur)
     }
+    coalesced.push(...added.slice(pairCount), ...removed.slice(pairCount))
+    start = end
   }
   return coalesced
 }

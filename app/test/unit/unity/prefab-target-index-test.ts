@@ -24,6 +24,7 @@ const sourcePrefab = [
   '  m_GameObject: {fileID: 100}',
   '  m_Enabled: 1',
   '  m_Script: {fileID: 11500000, guid: scriptguid, type: 3}',
+  '  m_Items:',
   '--- !u!1 &200',
   'GameObject:',
   '  m_Component:',
@@ -106,7 +107,79 @@ const parseSide = (content: string) => {
   }
 }
 
+const blankArrayPrefabInstance = (values: ReadonlyArray<string>) => {
+  const modifications =
+    values.length === 0
+      ? ['    m_Modifications: []']
+      : [
+          '    m_Modifications:',
+          '    - target: {fileID: 102, guid: sourceguid, type: 3}',
+          '      propertyPath: m_Items.Array.size',
+          `      value: ${values.length}`,
+          '      objectReference: {fileID: 0}',
+          ...values.flatMap((value, index) => [
+            '    - target: {fileID: 102, guid: sourceguid, type: 3}',
+            `      propertyPath: m_Items.Array.data[${index}]`,
+            `      value: ${value}`,
+            '      objectReference: {fileID: 0}',
+          ]),
+        ]
+  return [
+    '--- !u!1001 &900',
+    'PrefabInstance:',
+    '  m_ObjectHideFlags: 0',
+    '  serializedVersion: 2',
+    '  m_Modification:',
+    '    serializedVersion: 3',
+    '    m_TransformParent: {fileID: 0}',
+    ...modifications,
+    '    m_RemovedComponents: []',
+    '    m_RemovedGameObjects: []',
+    '    m_AddedGameObjects: []',
+    '    m_AddedComponents: []',
+    '  m_SourcePrefab: {fileID: 100100000, guid: sourceguid, type: 3}',
+  ].join('\n')
+}
+
 describe('computeUnityAssetDiff enrichment', () => {
+  it('空のスカラー配列 override を変更ドキュメントとして公開する', () => {
+    const before = parseSide(blankArrayPrefabInstance([]))
+    const after = parseSide(blankArrayPrefabInstance(['33', '34', '35']))
+    const sources = new Map([
+      ['sourceguid', parseUnityYaml(sourcePrefab).documents],
+    ])
+
+    const { result } = computeUnityAssetDiff(
+      before,
+      after,
+      sources,
+      () => undefined
+    )
+    const document = result.documents.find(doc => doc.classId === 114)
+    assert.ok(document !== undefined)
+    assert.equal(document.status, 'modified')
+
+    const items = document.properties.find(prop => prop.key === 'm_Items')
+    assert.equal(items?.status, 'modified')
+    assert.equal(items?.before?.kind, 'scalar')
+    assert.equal(items?.after?.kind, 'sequence')
+    if (items?.after?.kind !== 'sequence') {
+      return
+    }
+    assert.deepEqual(
+      items.after.items.map(value =>
+        value.kind === 'scalar' ? value.value : undefined
+      ),
+      ['33', '34', '35']
+    )
+
+    const root = result.roots.find(node => node.name === 'Root')
+    assert.equal(root?.status, 'modified')
+    const instance = result.prefabInstances.find(item => item.fileId === '900')
+    assert.equal(instance?.overrides.length, 4)
+    assert.equal(instance?.overrides.every(override => override.applied), true)
+  })
+
   it('fills GameObject path and component type on each override', () => {
     const before = parseSide(scenePrefabInstance('1'))
     const after = parseSide(scenePrefabInstance('2'))

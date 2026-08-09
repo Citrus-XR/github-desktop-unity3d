@@ -222,47 +222,69 @@ const parsePropertyPath = (path: string): ReadonlyArray<PathSegment> => {
   return segments
 }
 
+const arraySizeOf = (value: UnityOverrideValue): number | undefined => {
+  if (value.kind !== 'scalar' || !/^\d+$/.test(value.value)) {
+    return undefined
+  }
+  const size = Number(value.value)
+  return Number.isSafeInteger(size) ? size : undefined
+}
+
 /** Build a fresh value subtree from the tail of a path (used when a key or */
 /** index is missing from the base clone and we still want to bake it in). */
 const buildValueForPath = (
   segments: ReadonlyArray<PathSegment>,
   value: UnityOverrideValue
-): UnityPropertyValue => {
+): UnityPropertyValue | undefined => {
   if (segments.length === 0) {
     return value
   }
   const seg = segments[0]
   const rest = segments.slice(1)
   if (seg.kind === 'key') {
+    const child = buildValueForPath(rest, value)
+    if (child === undefined) {
+      return undefined
+    }
     return {
       kind: 'map',
-      entries: [{ key: seg.key, value: buildValueForPath(rest, value) }],
+      entries: [{ key: seg.key, value: child }],
     }
   }
   if (seg.kind === 'index') {
+    const child = buildValueForPath(rest, value)
+    if (child === undefined) {
+      return undefined
+    }
     const items = new Array<UnityPropertyValue>()
     for (let i = 0; i < seg.index; i++) {
       items.push({ kind: 'scalar', value: '' })
     }
-    items.push(buildValueForPath(rest, value))
+    items.push(child)
     return { kind: 'sequence', items }
   }
-  // A `size` at the tail without an existing sequence to resize is a no-op;
-  // returning the value verbatim would produce a nonsensical shape.
-  return value
+  const size = rest.length === 0 ? arraySizeOf(value) : undefined
+  return size !== undefined
+    ? {
+        kind: 'sequence',
+        items: Array.from({ length: size }, () => ({
+          kind: 'scalar' as const,
+          value: '',
+        })),
+      }
+    : undefined
 }
 
 /**
- * Apply an override value at `segments` inside `current`. Returns a new tree
- * (path-copy on mutation) or the input verbatim when the path could not be
- * walked. The apply pass in `expandPrefabInstances` uses the identity of the
- * returned value to detect whether an override actually landed.
+ * Apply an override value at `segments` inside `current`. `undefined` means the
+ * path could not be resolved. A successful result may be the original value
+ * when the override already equals the source value.
  */
 const applyOverrideAtPath = (
   current: UnityPropertyValue,
   segments: ReadonlyArray<PathSegment>,
   value: UnityOverrideValue
-): UnityPropertyValue => {
+): UnityPropertyValue | undefined => {
   if (segments.length === 0) {
     return value
   }
@@ -270,11 +292,14 @@ const applyOverrideAtPath = (
   const rest = segments.slice(1)
   if (seg.kind === 'key') {
     if (current.kind !== 'map') {
-      return current
+      return undefined
     }
     const idx = current.entries.findIndex(e => e.key === seg.key)
     if (idx < 0) {
       const built = buildValueForPath(rest, value)
+      if (built === undefined) {
+        return undefined
+      }
       return {
         kind: 'map',
         entries: [...current.entries, { key: seg.key, value: built }],
@@ -282,6 +307,9 @@ const applyOverrideAtPath = (
     }
     const entry = current.entries[idx]
     const nextSubValue = applyOverrideAtPath(entry.value, rest, value)
+    if (nextSubValue === undefined) {
+      return undefined
+    }
     if (nextSubValue === entry.value) {
       return current
     }
@@ -290,53 +318,66 @@ const applyOverrideAtPath = (
     return { kind: 'map', entries }
   }
   if (seg.kind === 'index') {
-    if (current.kind !== 'sequence') {
-      return current
+    const sequence =
+      current.kind === 'sequence'
+        ? current
+        : current.kind === 'scalar' && current.value.length === 0
+        ? { kind: 'sequence' as const, items: [] }
+        : undefined
+    if (sequence === undefined) {
+      return undefined
     }
-    if (seg.index < 0) {
-      return current
-    }
-    if (seg.index >= current.items.length) {
-      const items = current.items.slice()
+    if (seg.index >= sequence.items.length) {
+      const child = buildValueForPath(rest, value)
+      if (child === undefined) {
+        return undefined
+      }
+      const items = sequence.items.slice()
       while (items.length < seg.index) {
         items.push({ kind: 'scalar', value: '' })
       }
-      items.push(buildValueForPath(rest, value))
+      items.push(child)
       return { kind: 'sequence', items }
     }
-    const item = current.items[seg.index]
+    const item = sequence.items[seg.index]
     const nextItem = applyOverrideAtPath(item, rest, value)
-    if (nextItem === item) {
-      return current
+    if (nextItem === undefined) {
+      return undefined
     }
-    const items = current.items.slice()
+    if (nextItem === item) {
+      return sequence
+    }
+    const items = sequence.items.slice()
     items[seg.index] = nextItem
     return { kind: 'sequence', items }
   }
-  // `size`: reshape a sequence to the length parsed from the scalar value.
-  if (current.kind !== 'sequence' || value.kind !== 'scalar') {
-    return current
+  const sequence =
+    current.kind === 'sequence'
+      ? current
+      : current.kind === 'scalar' && current.value.length === 0
+      ? { kind: 'sequence' as const, items: [] }
+      : undefined
+  const nextSize = arraySizeOf(value)
+  if (sequence === undefined || nextSize === undefined) {
+    return undefined
   }
-  const nextSize = parseInt(value.value, 10)
-  if (!Number.isFinite(nextSize) || nextSize < 0) {
-    return current
+  if (nextSize === sequence.items.length) {
+    return sequence
   }
-  if (nextSize === current.items.length) {
-    return current
-  }
-  if (nextSize > current.items.length) {
-    const items = current.items.slice()
+  if (nextSize > sequence.items.length) {
+    const items = sequence.items.slice()
     while (items.length < nextSize) {
       items.push({ kind: 'scalar', value: '' })
     }
     return { kind: 'sequence', items }
   }
-  return { kind: 'sequence', items: current.items.slice(0, nextSize) }
+  return { kind: 'sequence', items: sequence.items.slice(0, nextSize) }
 }
 
 interface IModification {
   readonly targetFileId: UnityFileId
   readonly propertyPath: string
+  readonly segments: ReadonlyArray<PathSegment>
   readonly value: UnityOverrideValue
 }
 
@@ -361,6 +402,10 @@ const modificationsOf = (
     if (target === undefined || path === undefined || path.kind !== 'scalar') {
       continue
     }
+    const segments = parsePropertyPath(path.value)
+    if (segments.length === 0) {
+      continue
+    }
     const rawValue = findProperty(item.entries, 'value')
     const scalarValue =
       rawValue !== undefined && rawValue.kind === 'scalar'
@@ -370,31 +415,26 @@ const modificationsOf = (
     // exactly one is meaningful. A non-empty scalar wins outright; otherwise a
     // non-zero object reference is the payload; otherwise the empty scalar is
     // an explicit "cleared to empty" override.
+    let value: UnityOverrideValue
     if (scalarValue !== undefined && scalarValue.length > 0) {
-      result.push({
-        targetFileId: target,
-        propertyPath: path.value,
-        value: { kind: 'scalar', value: scalarValue },
-      })
-      continue
-    }
-    const objectReference = findProperty(item.entries, 'objectReference')
-    if (
-      objectReference !== undefined &&
-      objectReference.kind === 'reference' &&
-      objectReference.reference.fileId !== '0'
-    ) {
-      result.push({
-        targetFileId: target,
-        propertyPath: path.value,
-        value: objectReference,
-      })
-      continue
+      value = { kind: 'scalar', value: scalarValue }
+    } else {
+      const objectReference = findProperty(item.entries, 'objectReference')
+      if (
+        objectReference !== undefined &&
+        objectReference.kind === 'reference' &&
+        objectReference.reference.fileId !== '0'
+      ) {
+        value = objectReference
+      } else {
+        value = { kind: 'scalar', value: scalarValue ?? '' }
+      }
     }
     result.push({
       targetFileId: target,
       propertyPath: path.value,
-      value: { kind: 'scalar', value: scalarValue ?? '' },
+      segments,
+      value,
     })
   }
   return result
@@ -1091,14 +1131,21 @@ export const expandPrefabInstances = (
     if (info === undefined) {
       continue
     }
-    for (const mod of modificationsOf(instance)) {
+    const modifications = modificationsOf(instance)
+    // Unity は配列を縮小しても範囲外の data override を残すため、size を
+    // 最後に適用し、保存された論理サイズで余分な要素を確実に切り落とす。
+    const orderedModifications = [
+      ...modifications.filter(
+        mod => mod.segments[mod.segments.length - 1].kind !== 'size'
+      ),
+      ...modifications.filter(
+        mod => mod.segments[mod.segments.length - 1].kind === 'size'
+      ),
+    ]
+    for (const mod of orderedModifications) {
       const targetId = info.remap(mod.targetFileId)
       const target = out.get(targetId)
       if (target === undefined) {
-        continue
-      }
-      const segments = parsePropertyPath(mod.propertyPath)
-      if (segments.length === 0) {
         continue
       }
       // Wrap the doc's top-level property list in a synthetic map so the
@@ -1107,8 +1154,11 @@ export const expandPrefabInstances = (
         kind: 'map',
         entries: target.properties,
       }
-      const applied = applyOverrideAtPath(rootValue, segments, mod.value)
-      if (applied !== rootValue && applied.kind === 'map') {
+      const applied = applyOverrideAtPath(rootValue, mod.segments, mod.value)
+      if (applied === undefined || applied.kind !== 'map') {
+        continue
+      }
+      if (applied !== rootValue) {
         out.set(targetId, { ...target, properties: applied.entries })
       }
       if (appliedOverrides !== undefined && depth === 0) {

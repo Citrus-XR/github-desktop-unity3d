@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react'
+import type { UnityChangeStatus } from '../../../models/unity/semantic-diff'
 
 /** A property value taller than this many lines collapses behind a toggle. */
 const maxValueLines = 6
@@ -98,6 +99,7 @@ export class CollapsibleArray extends React.Component<
   {
     readonly summary: string
     readonly defaultExpanded: boolean
+    readonly status: UnityChangeStatus
     readonly children: React.ReactNode
   },
   { readonly expanded: boolean }
@@ -115,7 +117,8 @@ export class CollapsibleArray extends React.Component<
       <span className="unity-array">
         <button
           type="button"
-          className="unity-array-header"
+          className={`unity-array-header unity-status-${this.props.status}`}
+          aria-expanded={expanded}
           onClick={this.onToggle}
         >
           <span className="unity-array-toggle">{expanded ? '▾' : '▸'}</span>

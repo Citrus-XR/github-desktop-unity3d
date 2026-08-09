@@ -4,9 +4,11 @@ import { parseUnityYaml } from '../../../src/lib/unity/unity-yaml-parser'
 import { buildHierarchy } from '../../../src/lib/unity/hierarchy-builder'
 import {
   computeSemanticDiff,
+  diffPropertySequence,
   diffProperties,
   valueEquals,
 } from '../../../src/lib/unity/semantic-diff'
+import { UnityPropertyValue } from '../../../src/models/unity/serialized-asset'
 
 const side = (text: string) => {
   const { documents } = parseUnityYaml(text)
@@ -126,6 +128,68 @@ describe('diffProperties', () => {
     assert.equal(byKey.get('change'), 'modified')
     assert.equal(byKey.get('gone'), 'removed')
     assert.equal(byKey.get('fresh'), 'added')
+  })
+})
+
+const sequenceValue = (value: string): UnityPropertyValue => ({
+  kind: 'scalar',
+  value,
+})
+
+describe('diffPropertySequence', () => {
+  it('同じ位置の置換を一つの modified 行にまとめる', () => {
+    const rows = diffPropertySequence(
+      [sequenceValue('before')],
+      [sequenceValue('after')]
+    )
+
+    assert.deepEqual(rows, [
+      {
+        index: 0,
+        before: sequenceValue('before'),
+        after: sequenceValue('after'),
+        status: 'modified',
+      },
+    ])
+  })
+
+  it('等しい要素の間にある挿入と削除を独立した行として保つ', () => {
+    const inserted = diffPropertySequence(
+      [sequenceValue('a'), sequenceValue('c')],
+      [sequenceValue('a'), sequenceValue('b'), sequenceValue('c')]
+    )
+    const removed = diffPropertySequence(
+      [sequenceValue('a'), sequenceValue('b'), sequenceValue('c')],
+      [sequenceValue('a'), sequenceValue('c')]
+    )
+
+    assert.deepEqual(
+      inserted.map(row => row.status),
+      ['unchanged', 'added', 'unchanged']
+    )
+    assert.deepEqual(
+      removed.map(row => row.status),
+      ['unchanged', 'removed', 'unchanged']
+    )
+  })
+
+  it('連続した複数要素の置換を位置ごとにまとめる', () => {
+    const rows = diffPropertySequence(
+      [sequenceValue('a'), sequenceValue('b')],
+      [sequenceValue('c'), sequenceValue('d')]
+    )
+
+    assert.deepEqual(
+      rows.map(row => row.status),
+      ['modified', 'modified']
+    )
+    assert.deepEqual(
+      rows.map(row => [row.index, row.before, row.after]),
+      [
+        [0, sequenceValue('a'), sequenceValue('c')],
+        [1, sequenceValue('b'), sequenceValue('d')],
+      ]
+    )
   })
 })
 

@@ -2214,7 +2214,7 @@ export class UnityInspector extends React.Component<
       return this.renderValueDiff(prop.before, prop.after, result)
     }
     const value = prop.after ?? prop.before
-    return value !== null ? this.renderValue(value, result) : ''
+    return value !== null ? this.renderValue(value, result, prop.status) : ''
   }
 
   /**
@@ -2232,14 +2232,14 @@ export class UnityInspector extends React.Component<
     if (before === null) {
       return (
         <span className="unity-value-after">
-          {after !== null ? this.renderValue(after, result) : ''}
+          {after !== null ? this.renderValue(after, result, 'added') : ''}
         </span>
       )
     }
     if (after === null) {
       return (
         <span className="unity-value-before">
-          {this.renderValue(before, result)}
+          {this.renderValue(before, result, 'removed')}
         </span>
       )
     }
@@ -2252,11 +2252,11 @@ export class UnityInspector extends React.Component<
     return (
       <>
         <span className="unity-value-before">
-          {this.renderValue(before, result)}
+          {this.renderValue(before, result, 'removed')}
         </span>
         {' → '}
         <span className="unity-value-after">
-          {this.renderValue(after, result)}
+          {this.renderValue(after, result, 'added')}
         </span>
       </>
     )
@@ -2274,7 +2274,11 @@ export class UnityInspector extends React.Component<
       <span className={`unity-diff-entry ${statusClass(status)}`}>
         <span className={keyClass}>{label}:</span>{' '}
         {status === 'unchanged'
-          ? this.renderValue((after ?? before) as UnityPropertyValue, result)
+          ? this.renderValue(
+              (after ?? before) as UnityPropertyValue,
+              result,
+              status
+            )
           : this.renderValueDiff(before, after, result)}
       </span>
     )
@@ -2376,15 +2380,17 @@ export class UnityInspector extends React.Component<
     const rows = this.props.showUnchanged
       ? allRows
       : allRows.filter(r => r.status !== 'unchanged')
+    const changedCount = allRows.filter(r => r.status !== 'unchanged').length
     const totalItems = Math.max(before.length, after.length)
     return (
       <CollapsibleArray
         summary={
-          rows.length === allRows.length
-            ? `[${totalItems} item${totalItems === 1 ? '' : 's'}]`
-            : `[${rows.length} of ${totalItems} changed]`
+          changedCount > 0
+            ? `[${changedCount} of ${totalItems} changed]`
+            : `[${totalItems} item${totalItems === 1 ? '' : 's'}]`
         }
         defaultExpanded={!this.forceCollapseArrays && rows.length <= 8}
+        status="modified"
       >
         <span className="unity-sequence">
           {rows.map((r, i) => (
@@ -2406,7 +2412,8 @@ export class UnityInspector extends React.Component<
 
   private renderValue(
     value: UnityPropertyValue,
-    result: IUnitySemanticDiffResult
+    result: IUnitySemanticDiffResult,
+    status: UnityChangeStatus
   ): React.ReactNode {
     switch (value.kind) {
       case 'scalar':
@@ -2486,7 +2493,7 @@ export class UnityInspector extends React.Component<
             {value.entries.map((entry, index) => (
               <span key={index} className="unity-map-entry">
                 <span className="unity-map-key">{entry.key}:</span>{' '}
-                {this.renderValue(entry.value, result)}
+                {this.renderValue(entry.value, result, status)}
               </span>
             ))}
           </span>
@@ -2503,12 +2510,13 @@ export class UnityInspector extends React.Component<
             defaultExpanded={
               !this.forceCollapseArrays && value.items.length <= 8
             }
+            status={status}
           >
             <span className="unity-sequence">
               {value.items.map((item, index) => (
                 <span key={index} className="unity-sequence-item">
                   <span className="unity-sequence-index">{index}:</span>{' '}
-                  {this.renderValue(item, result)}
+                  {this.renderValue(item, result, status)}
                 </span>
               ))}
             </span>

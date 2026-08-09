@@ -497,6 +497,16 @@
     font: inherit;
     cursor: pointer;
 
+    &.unity-status-added {
+      color: var(--color-new);
+    }
+    &.unity-status-removed {
+      color: var(--color-deleted);
+    }
+    &.unity-status-modified {
+      color: var(--color-modified);
+    }
+
     &:hover {
       text-decoration: underline;
     }

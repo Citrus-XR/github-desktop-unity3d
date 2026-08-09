@@ -295,6 +295,83 @@ describe('expandPrefabInstances', () => {
     assert.equal(scalar(items.items[0]), 'hello')
   })
 
+  it('空のスカラーとして保存された配列を復元し、最後に論理サイズを適用する', () => {
+    const withBlankArraySource = parseUnityYaml(
+      ['--- !u!114 &300', 'MonoBehaviour:', '  m_Items:'].join('\n')
+    ).documents
+    const docs = parseUnityYaml(
+      [
+        '--- !u!1001 &5000',
+        'PrefabInstance:',
+        '  m_Modification:',
+        '    m_TransformParent: {fileID: 0}',
+        '    m_Modifications:',
+        '    - target: {fileID: 300, guid: arrguid, type: 3}',
+        '      propertyPath: m_Items.Array.size',
+        '      value: 2',
+        '      objectReference: {fileID: 0}',
+        '    - target: {fileID: 300, guid: arrguid, type: 3}',
+        '      propertyPath: m_Items.Array.data[0]',
+        '      value: first',
+        '      objectReference: {fileID: 0}',
+        '    - target: {fileID: 300, guid: arrguid, type: 3}',
+        '      propertyPath: m_Items.Array.data[1]',
+        '      value: second',
+        '      objectReference: {fileID: 0}',
+        '    - target: {fileID: 300, guid: arrguid, type: 3}',
+        '      propertyPath: m_Items.Array.data[2]',
+        '      value: stale',
+        '      objectReference: {fileID: 0}',
+        '  m_SourcePrefab: {fileID: 100100000, guid: arrguid, type: 3}',
+      ].join('\n')
+    ).documents
+    const expanded = expandPrefabInstances(docs, guid =>
+      guid === 'arrguid' ? withBlankArraySource : null
+    )
+    const mb = byId(expanded, remapFileId('5000', '300'))!
+    const items = prop(mb.properties, 'm_Items')
+
+    assert.equal(items?.kind, 'sequence')
+    if (items?.kind !== 'sequence') {
+      return
+    }
+    assert.deepEqual(items.items.map(scalar), ['first', 'second'])
+  })
+
+  it('解決できない override を適用済みとして報告しない', () => {
+    const withScalarSource = parseUnityYaml(
+      ['--- !u!114 &300', 'MonoBehaviour:', '  m_Value: text'].join('\n')
+    ).documents
+    const docs = parseUnityYaml(
+      [
+        '--- !u!1001 &5000',
+        'PrefabInstance:',
+        '  m_Modification:',
+        '    m_TransformParent: {fileID: 0}',
+        '    m_Modifications:',
+        '    - target: {fileID: 300, guid: arrguid, type: 3}',
+        '      propertyPath: m_Value.Array.size',
+        '      value: 2',
+        '      objectReference: {fileID: 0}',
+        '  m_SourcePrefab: {fileID: 100100000, guid: arrguid, type: 3}',
+      ].join('\n')
+    ).documents
+    const applied = new Set<string>()
+    const expanded = expandPrefabInstances(
+      docs,
+      guid => (guid === 'arrguid' ? withScalarSource : null),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      applied
+    )
+    const mb = byId(expanded, remapFileId('5000', '300'))!
+
+    assert.equal(scalar(prop(mb.properties, 'm_Value')), 'text')
+    assert.equal(applied.size, 0)
+  })
+
   it('reports override keys via the applied out-parameter', () => {
     const applied = new Set<string>()
     expandPrefabInstances(
